@@ -112,7 +112,7 @@ generate_infocyph_header() {
       "$centered_figlet" \
       "$box_mid" \
       "$centered_credit"
-  fi | boxes -d parchment -a hcvc | lolcat
+  fi | chromacat -b -B parchment
 }
 
 generate_infocyph_header "$@"
