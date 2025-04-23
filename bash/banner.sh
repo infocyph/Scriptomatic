@@ -1,12 +1,12 @@
 #!/bin/bash
 
 generate_infocyph_header() {
-  local title="${1:-LOCALDOCK}"
-  local describe=" ${2:-DESCRIBE} "
+  local title="INFOCYPH"
+  local describe=" ${1:-DESCRIBE} "
 
   # Generate figlet output for the title
   local figlet_output
-  figlet_output=$(figlet -f standard "$title")
+  figlet_output=$(figlet -f slant "$title")
 
   # Compute maximum length of figlet output lines
   local figlet_width=0
@@ -17,14 +17,72 @@ generate_infocyph_header() {
 
   # Prepare Credit Information
   local credits=(
-    "© Infocyph. Innovation at its core."
-    "© Infocyph. Powered by passion."
-    "© Infocyph. Crafting excellence."
-    "© Infocyph. Unleashing creativity."
-    "© Infocyph. Where ideas come to life."
+  "Innovation at its core."
+  "Powered by passion."
+  "Crafting excellence."
+  "Unleashing creativity."
+  "Where ideas come to life."
+  "Driven by curiosity."
+  "Engineering the future."
+  "Code with purpose."
+  "Empowering innovation."
+  "Simplicity meets brilliance."
+  "Ideas that inspire."
+  "Invent. Iterate. Impact."
+  "Fueling digital dreams."
+  "Excellence is our habit."
+  "Crafted with precision."
+  "Think bold. Build smart."
+  "Rooted in vision."
+  "Designing tomorrow."
+  "Innovation never sleeps."
+  "Beyond the ordinary."
+  "Code that matters."
+  "Dream. Build. Repeat."
+  "Solutions, not shortcuts."
+  "From vision to reality."
+  "Sharpening the edge of tech."
+  "Open source. Open minds."
+  "Powered by community."
+  "Collaborate. Contribute. Create."
+  "Freedom to build."
+  "Code belongs to everyone."
+  "Community is our compiler."
+  "Transparency is the backbone."
+  "Built in the open."
+  "Shared code, shared progress."
+  "Open hearts. Open repos."
+  "Fork it, fix it, fuel it."
+  "Innovation through collaboration."
+  "The source of all progress."
+  "Together, we build better."
+  "By devs, for devs."
+  "The power of many minds."
+  "Push, pull, empower."
+  "Trust the open way."
+  "License to innovate."
+  "Where sharing sparks growth."
   )
   local selected_credit="${credits[$RANDOM % ${#credits[@]}]}"
   local credit_length=${#selected_credit}
+
+  local box_styles=(
+  "default"
+  "dashed"
+  "dash2"
+  "round"
+  "double"
+  "heavy"
+  "parchment"
+  "simple"
+  "shell"
+  "html"
+  "plus"
+  "comment"
+  "php"
+  "chain"
+  )
+  local selected_box="${box_styles[$RANDOM % ${#box_styles[@]}]}"
 
   # Prepare DESCRIBE Box
   local box_text="$describe"
@@ -112,7 +170,7 @@ generate_infocyph_header() {
       "$centered_figlet" \
       "$box_mid" \
       "$centered_credit"
-  fi | chromacat -b -B parchment
+  fi | chromacat -b -B "$selected_box" -O d
 }
 
 generate_infocyph_header "$@"
