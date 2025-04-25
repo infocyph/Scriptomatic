@@ -1,12 +1,11 @@
 #!/bin/bash
 
 generate_infocyph_header() {
-  local title="INFOCYPH"
   local describe=" ${1:-DESCRIBE} "
 
   # Generate figlet output for the title
   local figlet_output
-  figlet_output=$(figlet -f slant "$title")
+  figlet_output=$(figlet -f slant "INFOCYPH")
 
   # Compute maximum length of figlet output lines
   local figlet_width=0
