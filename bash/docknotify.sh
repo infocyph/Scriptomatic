@@ -9,15 +9,21 @@ set -euo pipefail
 # token placeholder '-' is used if NOTIFY_TOKEN is empty
 # -----------------------------------------------------------------------------
 
-HOST="${NOTIFY_HOST:-SERVER_TOOLS}"   # must be reachable on the compose network
+HOST="${NOTIFY_HOST:-SERVER_TOOLS}"   # reachable on compose network
 PORT="${NOTIFY_TCP_PORT:-9901}"
 TOKEN="${NOTIFY_TOKEN:-}"
-[[ -z "$TOKEN" ]] && TOKEN='-'
+[[ -n "${TOKEN:-}" ]] || TOKEN='-'
 
 SOURCE="${NOTIFY_SOURCE:-${HOSTNAME:-svc}}"
 
 timeout="2500"
 urgency="normal"
+
+# Optional client caps (keep aligned with notifierd defaults)
+TITLE_MAX="${NOTIFY_TITLE_MAX:-100}"
+BODY_MAX="${NOTIFY_BODY_MAX:-300}"
+[[ "$TITLE_MAX" =~ ^[0-9]{1,4}$ ]] || TITLE_MAX=100
+[[ "$BODY_MAX"  =~ ^[0-9]{1,5}$ ]] || BODY_MAX=300
 
 usage() {
   cat >&2 <<'EOF'
@@ -29,6 +35,8 @@ Env:
   NOTIFY_TCP_PORT  default: 9901
   NOTIFY_TOKEN     optional (if empty, '-' placeholder is sent)
   NOTIFY_SOURCE    optional (default: HOSTNAME or 'svc')
+  NOTIFY_TITLE_MAX optional (default: 100)
+  NOTIFY_BODY_MAX  optional (default: 300)
 EOF
   exit 2
 }
@@ -50,6 +58,9 @@ shift $((OPTIND - 1))
 title="$1"
 body="$2"
 
+[[ -n "${HOST:-}" ]] || { echo "docknotify: host is empty" >&2; exit 2; }
+[[ "$PORT" =~ ^[0-9]{1,5}$ ]] || { echo "docknotify: invalid port: $PORT" >&2; exit 2; }
+
 # sanitize to keep one-line protocol stable
 SOURCE="${SOURCE//$'\n'/ }"; SOURCE="${SOURCE//$'\r'/ }"; SOURCE="${SOURCE//$'\t'/ }"
 title="${title//$'\n'/ }";   title="${title//$'\r'/ }";   title="${title//$'\t'/ }"
@@ -59,9 +70,16 @@ body="${body//$'\n'/ }";     body="${body//$'\r'/ }";     body="${body//$'\t'/ }
 [[ "$timeout" =~ ^[0-9]{1,6}$ ]] || timeout="2500"
 case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
 
-# require nc
+# apply caps client-side (optional but nice)
+title="${title:0:${TITLE_MAX}}"
+body="${body:0:${BODY_MAX}}"
+
 command -v nc >/dev/null 2>&1 || { echo "docknotify: nc not found" >&2; exit 127; }
 
-# send
-printf "%s\t%s\t%s\t%s\t%s\t%s\n" "$TOKEN" "$timeout" "$urgency" "$SOURCE" "$title" "$body" \
-  | nc -w 1 "$HOST" "$PORT"
+# prefer clean close if supported
+nc_args=(-w 1)
+nc -h 2>&1 | grep -q -- ' -N' && nc_args=(-N -w 1)
+
+# send (explicit newline)
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$TOKEN" "$timeout" "$urgency" "$SOURCE" "$title" "$body" \
+  | nc "${nc_args[@]}" "$HOST" "$PORT"
