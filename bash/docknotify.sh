@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
@@ -9,7 +9,7 @@ set -euo pipefail
 # token placeholder '-' is used if NOTIFY_TOKEN is empty
 # -----------------------------------------------------------------------------
 
-HOST="${NOTIFY_HOST:-SERVER_TOOLS}"   # reachable on compose network
+HOST="${NOTIFY_HOST:-SERVER_TOOLS}" # reachable on compose network
 PORT="${NOTIFY_TCP_PORT:-9901}"
 TOKEN="${NOTIFY_TOKEN:-}"
 [[ -n "${TOKEN:-}" ]] || TOKEN='-'
@@ -19,11 +19,15 @@ SOURCE="${NOTIFY_SOURCE:-${HOSTNAME:-svc}}"
 timeout="2500"
 urgency="normal"
 
-# Optional client caps (keep aligned with notifierd defaults)
+# Optional client-side caps (keep aligned with notifierd defaults)
 TITLE_MAX="${NOTIFY_TITLE_MAX:-100}"
 BODY_MAX="${NOTIFY_BODY_MAX:-300}"
-[[ "$TITLE_MAX" =~ ^[0-9]{1,4}$ ]] || TITLE_MAX=100
-[[ "$BODY_MAX"  =~ ^[0-9]{1,5}$ ]] || BODY_MAX=300
+[[ "${TITLE_MAX:-}" =~ ^[0-9]{1,4}$ ]] || TITLE_MAX=100
+[[ "${BODY_MAX:-}" =~ ^[0-9]{1,5}$ ]] || BODY_MAX=300
+
+# Default: best-effort (don't break app pipelines if tools is down)
+# Set DOCKNOTIFY_STRICT=1 to fail hard on send error.
+STRICT="${DOCKNOTIFY_STRICT:-0}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -31,12 +35,13 @@ Usage:
   docknotify [-H host] [-p port] [-t ms] [-u low|normal|critical] [-s source] <title> <body>
 
 Env:
-  NOTIFY_HOST      default: SERVER_TOOLS
-  NOTIFY_TCP_PORT  default: 9901
-  NOTIFY_TOKEN     optional (if empty, '-' placeholder is sent)
-  NOTIFY_SOURCE    optional (default: HOSTNAME or 'svc')
-  NOTIFY_TITLE_MAX optional (default: 100)
-  NOTIFY_BODY_MAX  optional (default: 300)
+  NOTIFY_HOST          default: SERVER_TOOLS
+  NOTIFY_TCP_PORT      default: 9901
+  NOTIFY_TOKEN         optional (if empty, '-' placeholder is sent)
+  NOTIFY_SOURCE        optional (default: HOSTNAME or 'svc')
+  NOTIFY_TITLE_MAX     optional (default: 100)
+  NOTIFY_BODY_MAX      optional (default: 300)
+  DOCKNOTIFY_STRICT    optional (default: 0). if 1 -> exit non-zero on send failure
 EOF
   exit 2
 }
@@ -58,28 +63,50 @@ shift $((OPTIND - 1))
 title="$1"
 body="$2"
 
-[[ -n "${HOST:-}" ]] || { echo "docknotify: host is empty" >&2; exit 2; }
-[[ "$PORT" =~ ^[0-9]{1,5}$ ]] || { echo "docknotify: invalid port: $PORT" >&2; exit 2; }
-
-# sanitize to keep one-line protocol stable
-SOURCE="${SOURCE//$'\n'/ }"; SOURCE="${SOURCE//$'\r'/ }"; SOURCE="${SOURCE//$'\t'/ }"
-title="${title//$'\n'/ }";   title="${title//$'\r'/ }";   title="${title//$'\t'/ }"
-body="${body//$'\n'/ }";     body="${body//$'\r'/ }";     body="${body//$'\t'/ }"
+[[ -n "${HOST:-}" ]] || {
+  echo "docknotify: host is empty" >&2
+  exit 2
+}
+[[ "$PORT" =~ ^[0-9]{1,5}$ ]] || {
+  echo "docknotify: invalid port: $PORT" >&2
+  exit 2
+}
+((PORT >= 1 && PORT <= 65535)) || {
+  echo "docknotify: port out of range: $PORT" >&2
+  exit 2
+}
 
 # validate (avoid breaking the server)
 [[ "$timeout" =~ ^[0-9]{1,6}$ ]] || timeout="2500"
-case "$urgency" in low|normal|critical) ;; *) urgency="normal" ;; esac
+case "$urgency" in low | normal | critical) ;; *) urgency="normal" ;; esac
+
+# sanitize to keep one-line protocol stable
+SOURCE="${SOURCE//$'\n'/ }"
+SOURCE="${SOURCE//$'\r'/ }"
+SOURCE="${SOURCE//$'\t'/ }"
+title="${title//$'\n'/ }"
+title="${title//$'\r'/ }"
+title="${title//$'\t'/ }"
+body="${body//$'\n'/ }"
+body="${body//$'\r'/ }"
+body="${body//$'\t'/ }"
 
 # apply caps client-side (optional but nice)
 title="${title:0:${TITLE_MAX}}"
 body="${body:0:${BODY_MAX}}"
 
-command -v nc >/dev/null 2>&1 || { echo "docknotify: nc not found" >&2; exit 127; }
+command -v nc >/dev/null 2>&1 || {
+  echo "docknotify: nc not found" >&2
+  exit 127
+}
 
-# prefer clean close if supported
-nc_args=(-w 1)
-nc -h 2>&1 | grep -q -- ' -N' && nc_args=(-N -w 1)
+# send (best-effort by default)
+payload="$(printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$TOKEN" "$timeout" "$urgency" "$SOURCE" "$title" "$body")"
 
-# send (explicit newline)
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$TOKEN" "$timeout" "$urgency" "$SOURCE" "$title" "$body" \
-  | nc "${nc_args[@]}" "$HOST" "$PORT"
+if ! printf '%s' "$payload" | nc -w 1 "$HOST" "$PORT" >/dev/null 2>&1; then
+  if [[ "$STRICT" == "1" ]]; then
+    echo "docknotify: failed to send to $HOST:$PORT" >&2
+    exit 1
+  fi
+  exit 0
+fi
