@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# cli-setup.sh   USERNAME  PHP_VERSION
+# node-cli-setup.sh USERNAME NODE_VERSION
 set -euo pipefail
 
 #####################################################################
 # Arguments & paths
 #####################################################################
 USERNAME="${1:?username required}"
-PHP_VERSION="${2:?php-version required}"
+NODE_VERSION="${2:?node-version required}"
 
 HOME_DIR="/home/${USERNAME}"
 BASHRC="${HOME_DIR}/.bashrc"
@@ -16,11 +16,10 @@ BASHRC="${HOME_DIR}/.bashrc"
 : "${GID:=1000}"
 : "${LINUX_PKG:=}"
 : "${LINUX_PKG_VERSIONED:=}"
-: "${PHP_EXT:=}"
-: "${PHP_EXT_VERSIONED:=}"
+: "${NODE_GLOBAL:=}"
+: "${NODE_GLOBAL_VERSIONED:=}"
 
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
-IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
 
 #####################################################################
 # Helper utilities
@@ -30,29 +29,17 @@ line_in_file() { grep -qF "$1" "$2"; }
 run_as_user() { sudo -u "$USERNAME" -H -- "$@"; }
 
 #####################################################################
-# 1. Base OS packages & PHP extensions
+# 1. Base OS packages
 #####################################################################
-install_os_and_php() {
-  echo "👉 Installing base Alpine packages and PHP extensions…"
+install_os() {
+  echo "👉 Installing base Alpine packages…"
   apk update
   apk add --no-cache \
     curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
-  if [[ ! -x /usr/local/bin/install-php-extensions ]]; then
-    curl -fsSL "$IPE_URL" -o /usr/local/bin/install-php-extensions
-    chmod +x /usr/local/bin/install-php-extensions
-  fi
-
-  install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
-
-  composer --no-interaction self-update --clean-backups
-
-  # Ensure FPM listens on 0.0.0.0:9000
-  sed -i 's|^listen = .*|listen = 0.0.0.0:9000|' /usr/local/etc/php-fpm.d/zz-docker.conf
-
-  # Clean apk cache to keep layers small
-  rm -rf /usr/local/bin/install-php-extensions /var/cache/apk/* /tmp/* /var/tmp/*
+  # Keep layers small
+  rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
 }
 
 #####################################################################
@@ -66,11 +53,13 @@ install_helper_scripts() {
     "https://raw.githubusercontent.com/infocyph/Toolset/main/ChromaCat/chromacat|/usr/local/bin/chromacat"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
   ) dests=() url dst pair
+
   for pair in "${helpers[@]}"; do
-    IFS='|' read -r url dst <<< "$pair"
+    IFS='|' read -r url dst <<<"$pair"
     curl -fsSL "$url" -o "$dst"
     dests+=("$dst")
   done
+
   chmod +x "${dests[@]}"
 }
 
@@ -84,7 +73,7 @@ set_banner_hook() {
 #!/bin/sh
 if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
   export BANNER_SHOWN=1
-  show-banner "PHP ${PHP_VERSION}"
+  show-banner "Node ${NODE_VERSION}"
 fi
 EOF
   chmod +x /etc/profile.d/banner-hook.sh
@@ -96,7 +85,7 @@ EOF
 create_user() {
   echo "👉 Ensuring user ${USERNAME} (UID=${UID}, GID=${GID}) exists…"
 
-  # Ensure group
+  # Ensure group by numeric GID
   getent group "${GID}" >/dev/null || addgroup -g "${GID}" "${USERNAME}"
 
   # Ensure user
@@ -105,87 +94,113 @@ create_user() {
       -h "${HOME_DIR}" -s /bin/bash "${USERNAME}"
   fi
 
-  # Sudo without password
-  apk add --no-cache sudo
+  # Sudo without password (needed for dev shells)
   echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/"${USERNAME}"
   chmod 0440 /etc/sudoers.d/"${USERNAME}"
 
-  # Composer cache dir + ownership
-  mkdir -p "${HOME_DIR}/.composer/vendor"
+  # Node caches / global prefix (avoid root-owned globals)
+  mkdir -p \
+    "${HOME_DIR}/.npm" \
+    "${HOME_DIR}/.cache" \
+    "${HOME_DIR}/.npm-global"
+
   chown -R "${USERNAME}:${USERNAME}" "${HOME_DIR}"
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
-  chown "${USERNAME}:${USERNAME}" /usr/local/bin/{cli-setup.sh,show-banner,gitx,chromacat}
+  chown "${USERNAME}:${USERNAME}" /usr/local/bin/{show-banner,gitx,chromacat,docknotify} 2>/dev/null || true
 }
 
 #####################################################################
-# 5. Oh-My-Bash & .bashrc tweaks (from previous version)
+# 5. Node tooling (corepack + safe global installs)
+#####################################################################
+configure_node() {
+  echo "👉 Configuring Node tooling…"
+
+  # Enable corepack for pnpm/yarn (non-fatal)
+  corepack enable >/dev/null 2>&1 || true
+
+  # Persist npm global prefix and PATH in .bashrc (user-owned)
+  run_as_user bash -lc "touch '$BASHRC'"
+
+  local l1='export NPM_CONFIG_PREFIX="$HOME/.npm-global"'
+  local l2='export PATH="$HOME/.npm-global/bin:$PATH"'
+
+  line_in_file "$l1" "$BASHRC" || echo "$l1" >>"$BASHRC"
+  line_in_file "$l2" "$BASHRC" || echo "$l2" >>"$BASHRC"
+
+  # Optional global packages (comma-separated)
+  if [[ -n "${NODE_GLOBAL//[[:space:]]/}" || -n "${NODE_GLOBAL_VERSIONED//[[:space:]]/}" ]]; then
+    echo "👉 Installing global Node packages…"
+    run_as_user bash -lc "npm i -g ${NODE_GLOBAL//,/ } ${NODE_GLOBAL_VERSIONED//,/ }"
+  fi
+}
+
+#####################################################################
+# 6. Oh-My-Bash & .bashrc tweaks
 #####################################################################
 configure_oh_my_bash() {
   echo "👉 Configuring Oh My Bash for ${USERNAME}…"
 
-  # Install Oh-My-Bash for the user if absent
   if [[ ! -d "${HOME_DIR}/.oh-my-bash" ]]; then
     run_as_user bash -c "curl -fsSL '$OHMB_URL' | bash -s -- --unattended"
   fi
 
-  [[ -f $BASHRC ]] || run_as_user touch "$BASHRC"
+  [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
 
   sed -i '
     s/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/
     s/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/
     s/^[[:space:]]*#\?[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/
     /^[[:space:]]*#\?[[:space:]]*plugins=([[:space:]]*$/,/^[[:space:]]*)[[:space:]]*$/c\plugins=(git bashmarks colored-man-pages npm xterm)
-  ' "$BASHRC"
+  ' "$BASHRC" || true
 }
 
 #####################################################################
-# 6. Banner snippet inside user’s .bashrc
+# 7. Banner snippet inside user’s .bashrc
 #####################################################################
 add_banner_snippet() {
   local banner='if [ -n "$PS1" ] && [ -z "${BANNER_SHOWN-}" ]; then
   export BANNER_SHOWN=1
-  show-banner "PHP '"${PHP_VERSION}"'"
+  show-banner "Node '"${NODE_VERSION}"'"
 fi'
 
-  if ! line_in_file 'show-banner "PHP' "$BASHRC"; then
+  if ! line_in_file 'show-banner "Node' "$BASHRC"; then
     echo "👉 Adding banner snippet to .bashrc…"
     printf "\n%s\n" "$banner" >>"$BASHRC"
   fi
 }
 
 #####################################################################
-# 7. Handy aliases (original style)
+# 8. Handy aliases
 #####################################################################
 ensure_aliases() {
   echo "👉 Adding handy aliases…"
   local aliases=(
     'alias ll="ls -la"'
-    )
-  for alias_cmd in "${aliases[@]}"; do
-    line_in_file "$alias_cmd" "$BASHRC" || echo "$alias_cmd" >>"$BASHRC"
+  )
+  local a
+  for a in "${aliases[@]}"; do
+    line_in_file "$a" "$BASHRC" || echo "$a" >>"$BASHRC"
   done
 }
 
 #####################################################################
-# 8. Orchestrate everything
+# 9. Orchestrate everything
 #####################################################################
 main() {
-  [[ $EUID -eq 0 ]] || {
-    echo "Run as root (inside Docker build)"
-    exit 1
-  }
+  [[ $EUID -eq 0 ]] || { echo "Run as root (inside Docker build)"; exit 1; }
 
-  install_os_and_php
+  install_os
   install_helper_scripts
   set_banner_hook
   create_user
+  configure_node
   configure_oh_my_bash
   add_banner_snippet
   ensure_aliases
 
-  echo "✅ cli-setup complete for ${USERNAME}"
+  echo "✅ node cli-setup complete for ${USERNAME}"
   rm -f -- "$0"
 }
 
