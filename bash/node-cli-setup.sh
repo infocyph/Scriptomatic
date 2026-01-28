@@ -24,9 +24,12 @@ OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/ins
 #####################################################################
 # Helper utilities
 #####################################################################
-user_exists() { getent passwd "$1" >/dev/null; }
-line_in_file() { grep -qF "$1" "$2"; }
+user_exists() { getent passwd "$1" >/dev/null 2>&1; }
+line_in_file() { grep -qF "$1" "$2" 2>/dev/null; }
 run_as_user() { sudo -u "$USERNAME" -H -- "$@"; }
+
+user_by_uid() { getent passwd "$1" 2>/dev/null | cut -d: -f1; }
+group_by_gid() { getent group "$1" 2>/dev/null | cut -d: -f1; }
 
 #####################################################################
 # 1. Base OS packages
@@ -81,17 +84,61 @@ EOF
 
 #####################################################################
 # 4. Create (or sync) non-root user with sudo rights
+#    NOTE: node:<ver>-alpine often has 'node' user with UID=1000.
+#          We reuse/rename that user instead of failing.
 #####################################################################
 create_user() {
   echo "👉 Ensuring user ${USERNAME} (UID=${UID}, GID=${GID}) exists…"
 
-  # Ensure group by numeric GID
-  getent group "${GID}" >/dev/null || addgroup -g "${GID}" "${USERNAME}"
+  # Ensure group exists (by numeric GID). If missing, create it.
+  local grp
+  grp="$(group_by_gid "$GID" || true)"
+  if [[ -z "$grp" ]]; then
+    addgroup -g "$GID" "$USERNAME"
+    grp="$USERNAME"
+  fi
 
-  # Ensure user
-  if ! user_exists "${USERNAME}"; then
-    adduser -D -u "${UID}" -G "$(getent group "${GID}" | cut -d: -f1)" \
-      -h "${HOME_DIR}" -s /bin/bash "${USERNAME}"
+  # Case A: desired username already exists
+  if user_exists "$USERNAME"; then
+    # Make sure it has a bash shell and correct home (best-effort)
+    usermod -s /bin/bash "$USERNAME" >/dev/null 2>&1 || true
+    local cur_home
+    cur_home="$(getent passwd "$USERNAME" | cut -d: -f6)"
+    if [[ "$cur_home" != "$HOME_DIR" ]]; then
+      mkdir -p "$HOME_DIR"
+      usermod -d "$HOME_DIR" -m "$USERNAME" >/dev/null 2>&1 || true
+    fi
+    usermod -g "$grp" "$USERNAME" >/dev/null 2>&1 || true
+
+    # Case B: UID already taken (common: 'node' user has UID=1000)
+  else
+    local owner
+    owner="$(user_by_uid "$UID" || true)"
+    if [[ -n "$owner" ]]; then
+      echo "👉 UID ${UID} is owned by '${owner}'. Reusing by renaming to '${USERNAME}'…"
+
+      # Rename user to desired username
+      usermod -l "$USERNAME" "$owner"
+
+      # If the old user's group name matches, rename it too (best-effort)
+      if getent group "$owner" >/dev/null 2>&1; then
+        local ogid
+        ogid="$(getent group "$owner" | cut -d: -f3)"
+        if [[ "$ogid" == "$GID" ]]; then
+          groupmod -n "$USERNAME" "$owner" >/dev/null 2>&1 || true
+          grp="$USERNAME"
+        fi
+      fi
+
+      # Ensure home + shell + primary group
+      mkdir -p "$HOME_DIR"
+      usermod -d "$HOME_DIR" -m "$USERNAME" >/dev/null 2>&1 || true
+      usermod -s /bin/bash "$USERNAME" >/dev/null 2>&1 || true
+      usermod -g "$grp" "$USERNAME" >/dev/null 2>&1 || true
+    else
+      # Case C: brand new user
+      adduser -D -u "$UID" -G "$grp" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
+    fi
   fi
 
   # Sudo without password (needed for dev shells)
@@ -104,11 +151,11 @@ create_user() {
     "${HOME_DIR}/.cache" \
     "${HOME_DIR}/.npm-global"
 
-  chown -R "${USERNAME}:${USERNAME}" "${HOME_DIR}"
+  chown -R "${USERNAME}:${grp}" "${HOME_DIR}"
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
-  chown "${USERNAME}:${USERNAME}" /usr/local/bin/{show-banner,gitx,chromacat,docknotify} 2>/dev/null || true
+  chown "${USERNAME}:${grp}" /usr/local/bin/{show-banner,gitx,chromacat,docknotify} 2>/dev/null || true
 }
 
 #####################################################################
@@ -125,7 +172,6 @@ configure_node() {
 
   local l1='export NPM_CONFIG_PREFIX="$HOME/.npm-global"'
   local l2='export PATH="$HOME/.npm-global/bin:$PATH"'
-
   line_in_file "$l1" "$BASHRC" || echo "$l1" >>"$BASHRC"
   line_in_file "$l2" "$BASHRC" || echo "$l2" >>"$BASHRC"
 
