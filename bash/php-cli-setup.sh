@@ -45,8 +45,6 @@ install_os_and_php() {
   fi
 
   mkdir -p /usr/local/share/ca-certificates
-#  install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
-  update-ca-certificates
   install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
   composer --no-interaction self-update --clean-backups
 
@@ -68,6 +66,7 @@ install_helper_scripts() {
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh|/usr/local/bin/show-banner"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh|/usr/local/bin/git-default"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
+    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/php-entry.sh|/usr/local/bin/php-entry"
   ) dests=() url dst pair
   for pair in "${helpers[@]}"; do
     IFS='|' read -r url dst <<< "$pair"
