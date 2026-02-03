@@ -36,7 +36,7 @@ install_os_and_php() {
   echo "👉 Installing base Alpine packages and PHP extensions…"
   apk update
   apk add --no-cache \
-    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk \
+    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   if [[ ! -x /usr/local/bin/install-php-extensions ]]; then
@@ -44,8 +44,9 @@ install_os_and_php() {
     chmod +x /usr/local/bin/install-php-extensions
   fi
 
+  install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
+  update-ca-certificates
   install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
-
   composer --no-interaction self-update --clean-backups
 
   # Ensure FPM listens on 0.0.0.0:9000

@@ -38,8 +38,11 @@ install_os() {
   echo "👉 Installing base Alpine packages…"
   apk update
   apk add --no-cache \
-    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk \
+    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
+
+  install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
+  update-ca-certificates
 
   # Keep layers small
   rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
