@@ -44,7 +44,9 @@ install_os_and_php() {
     chmod +x /usr/local/bin/install-php-extensions
   fi
 
-  mkdir -p /usr/local/share/ca-certificates
+  # Ensure system CA bundle exists (Alpine)
+  update-ca-certificates >/dev/null 2>&1 || true
+
   install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
   composer --no-interaction self-update --clean-backups
 
@@ -53,6 +55,24 @@ install_os_and_php() {
 
   # Clean apk cache to keep layers small
   rm -rf /usr/local/bin/install-php-extensions /var/cache/apk/* /tmp/* /var/tmp/*
+}
+
+#####################################################################
+# 1b. Force PHP to use the system CA bundle (openssl + curl)
+#####################################################################
+configure_php_ca_ini() {
+  echo "👉 Writing PHP CA bundle ini…"
+  local ini_dir="/usr/local/etc/php/conf.d"
+  local ini_file="${ini_dir}/99-ca-bundle.ini"
+
+  mkdir -p "$ini_dir"
+
+  cat >"$ini_file" <<'EOF'
+openssl.cafile=/etc/ssl/certs/ca-certificates.crt
+curl.cainfo=/etc/ssl/certs/ca-certificates.crt
+EOF
+
+  chmod 0644 "$ini_file"
 }
 
 #####################################################################
@@ -107,8 +127,7 @@ create_user() {
       -h "${HOME_DIR}" -s /bin/bash "${USERNAME}"
   fi
 
-  # Sudo without password
-  apk add --no-cache sudo
+  # Sudo without password (already installed in install_os_and_php)
   echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/"${USERNAME}"
   chmod 0440 /etc/sudoers.d/"${USERNAME}"
 
@@ -118,7 +137,7 @@ create_user() {
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
-  chown "${USERNAME}:${USERNAME}" /usr/local/bin/{cli-setup.sh,show-banner,gitx,chromacat}
+  chown "${USERNAME}:${USERNAME}" /usr/local/bin/{cli-setup.sh,show-banner,gitx,chromacat} 2>/dev/null || true
 }
 
 #####################################################################
@@ -164,7 +183,7 @@ ensure_aliases() {
   echo "👉 Adding handy aliases…"
   local aliases=(
     'alias ll="ls -la"'
-    )
+  )
   for alias_cmd in "${aliases[@]}"; do
     line_in_file "$alias_cmd" "$BASHRC" || echo "$alias_cmd" >>"$BASHRC"
   done
@@ -180,6 +199,7 @@ main() {
   }
 
   install_os_and_php
+  configure_php_ca_ini
   install_helper_scripts
   set_banner_hook
   create_user
