@@ -41,6 +41,7 @@ install_os() {
     curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
+  mkdir -p /usr/local/share/ca-certificates
   install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
   update-ca-certificates
 

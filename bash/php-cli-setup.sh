@@ -44,6 +44,7 @@ install_os_and_php() {
     chmod +x /usr/local/bin/install-php-extensions
   fi
 
+  mkdir -p /usr/local/share/ca-certificates
   install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
   update-ca-certificates
   install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
