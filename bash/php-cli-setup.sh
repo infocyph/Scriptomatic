@@ -45,7 +45,7 @@ install_os_and_php() {
   fi
 
   mkdir -p /usr/local/share/ca-certificates
-  install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
+#  install -m 0644 /etc/share/rootCA/rootCA.pem /usr/local/share/ca-certificates/rootCA.crt
   update-ca-certificates
   install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
   composer --no-interaction self-update --clean-backups
