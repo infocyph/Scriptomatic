@@ -32,12 +32,18 @@ if [ -n "${NODE_CMD:-}" ]; then
   exec sh -lc "$NODE_CMD"
 fi
 
+###############################################################################
+# Defaults used by common dev servers (Vite, etc.)
+###############################################################################
+: "${HOST:=0.0.0.0}"
+: "${PORT:=3000}"
+
 : "${NPM_AUDIT:=0}"
 : "${NPM_FUND:=0}"
 
 npm_flags=""
 [ "$NPM_AUDIT" = "1" ] || npm_flags="$npm_flags --no-audit"
-[ "$NPM_FUND"  = "1" ] || npm_flags="$npm_flags --no-fund"
+[ "$NPM_FUND" = "1" ] || npm_flags="$npm_flags --no-fund"
 
 if [ ! -d node_modules ]; then
   if [ -f package-lock.json ]; then
@@ -48,11 +54,12 @@ if [ ! -d node_modules ]; then
 fi
 
 has_script() {
+  # Usage: has_script dev|start
   node -e "const p=require('./package.json');process.exit(p.scripts&&p.scripts['$1']?0:1)" 2>/dev/null
 }
 
 if has_script dev; then
-  exec npm run dev
+  exec npm run dev -- --host "$HOST" --port "$PORT"
 fi
 
 if has_script start; then
@@ -62,7 +69,7 @@ fi
 [ -f server.js ] && exec node server.js
 [ -f index.js ] && exec node index.js
 
-echo "No runnable script found (dev/start missing; server.js/index.js not found)."
-echo "Set NODE_CMD to override, e.g.: NODE_CMD='node app.js' or 'npm run serve'."
+echo "No runnable script found (dev/start missing; server.js/index.js not found)." >&2
+echo "Set NODE_CMD to override, e.g.: NODE_CMD='node app.js' or 'npm run serve'." >&2
 command -v bash >/dev/null 2>&1 && exec bash
 exec sh
