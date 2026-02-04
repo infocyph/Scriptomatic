@@ -36,7 +36,7 @@ install_os_and_php() {
   echo "👉 Installing base Alpine packages and PHP extensions…"
   apk update
   apk add --no-cache \
-    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
+    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates msmtp \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   if [[ ! -x /usr/local/bin/install-php-extensions ]]; then
@@ -58,21 +58,51 @@ install_os_and_php() {
 }
 
 #####################################################################
-# 1b. Force PHP to use the system CA bundle (openssl + curl)
+# 1b. Force PHP to use the system bundle
 #####################################################################
-configure_php_ca_ini() {
+configure_required_ini() {
   echo "👉 Writing PHP CA bundle ini…"
   local ini_dir="/usr/local/etc/php/conf.d"
-  local ini_file="${ini_dir}/99-ca-bundle.ini"
+  local ini_file="${ini_dir}/99-script-bundle.ini"
 
   mkdir -p "$ini_dir"
 
   cat >"$ini_file" <<'EOF'
 openssl.cafile=/etc/ssl/certs/ca-certificates.crt
 curl.cainfo=/etc/ssl/certs/ca-certificates.crt
+sendmail_path="/usr/bin/msmtp -t"
 EOF
 
   chmod 0644 "$ini_file"
+}
+
+#####################################################################
+# 1c. Configure msmtp so PHP mail() relays to Mailpit via STARTTLS
+#####################################################################
+configure_msmtp() {
+  echo "👉 Writing msmtp config (/etc/msmtprc)…"
+
+  # Defaults: Mailpit inside docker network
+  : "${MSMTP_FROM:=dev@localhost}"
+
+  cat >/etc/msmtprc <<EOF
+# Auto-generated
+defaults
+auth           off
+tls            on
+tls_starttls   on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        /tmp/msmtp.log
+
+account        mailpit
+host           mailpit
+port           1025
+from           ${MSMTP_FROM}
+
+account default : mailpit
+EOF
+
+  chmod 0644 /etc/msmtprc
 }
 
 #####################################################################
@@ -199,7 +229,8 @@ main() {
   }
 
   install_os_and_php
-  configure_php_ca_ini
+  configure_required_ini
+  configure_msmtp
   install_helper_scripts
   set_banner_hook
   create_user
