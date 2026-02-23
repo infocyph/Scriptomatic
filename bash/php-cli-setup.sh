@@ -66,25 +66,23 @@ configure_fpm_includes_and_dirs() {
   local fpm_conf="/usr/local/etc/php-fpm.conf"
   local domains_dir="/usr/local/etc/php-fpm.domains"
 
-  # Ensure runtime dirs exist (for unix sockets + per-domain logs)
-  mkdir -p /run/php-fpm /var/log/php-fpm
+  # Ensure runtime dirs exist (unix sockets + per-domain logs)
+  mkdir -p "$domains_dir" /run/php-fpm /var/log/php-fpm
   chown -R www-data:www-data /run/php-fpm /var/log/php-fpm || true
-  chmod 0755 /run/php-fpm /var/log/php-fpm || true
+  chmod 0755 "$domains_dir" /run/php-fpm /var/log/php-fpm || true
 
   # Ensure the main config exists
   [[ -f "$fpm_conf" ]] || { echo "Error: missing $fpm_conf"; return 1; }
 
-  # Keep the default include for /usr/local/etc/php-fpm.d/*.conf (if none exists at all)
-  if ! grep -qE '^[[:space:]]*include[[:space:]]*=' "$fpm_conf"; then
-    printf "\ninclude=/usr/local/etc/php-fpm.d/*.conf\n" >>"$fpm_conf"
+  # Ensure default pools include exists
+  if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.d/\*\.conf[[:space:]]*$' "$fpm_conf"; then
+    printf "\n; Default pool include\ninclude=/usr/local/etc/php-fpm.d/*.conf\n" >>"$fpm_conf"
   fi
 
-  # Add Option-B include for external domain pools directory (mounted from host)
-  if ! grep -qE "^[[:space:]]*include[[:space:]]*=[[:space:]]*${domains_dir//\//\\/}/\*\.conf[[:space:]]*$" "$fpm_conf"; then
+  # Ensure Option-B include exists
+  if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.domains/\*\.conf[[:space:]]*$' "$fpm_conf"; then
     printf "\n; Option B: extra pool dir mounted from host\ninclude=%s/*.conf\n" "$domains_dir" >>"$fpm_conf"
   fi
-
-  # If the directory doesn't exist at build time it's fine; it will exist at runtime via mount
 }
 
 #####################################################################
