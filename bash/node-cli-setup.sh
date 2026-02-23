@@ -252,6 +252,7 @@ main() {
   ensure_aliases
 
   echo "✅ node cli-setup complete for ${USERNAME}"
+  rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
   rm -f -- "$0"
 }
 
