@@ -65,11 +65,18 @@ configure_fpm_includes_and_dirs() {
 
   local fpm_conf="/usr/local/etc/php-fpm.conf"
   local domains_dir="/usr/local/etc/php-fpm.domains"
+  local sock_dir="/home/${USERNAME}/.run/php-fpm"
 
-  # Ensure runtime dirs exist (unix sockets + per-domain logs)
-  mkdir -p "$domains_dir" /run/php-fpm /var/log/php-fpm
-  chown -R www-data:www-data /run/php-fpm /var/log/php-fpm || true
-  chmod 0755 "$domains_dir" /run/php-fpm /var/log/php-fpm || true
+  # Create dirs
+  mkdir -p /var/log/php-fpm "$domains_dir" "$sock_dir"
+
+  # Logs (php-fpm workers)
+  chown -R www-data:www-data /var/log/php-fpm
+  chmod 0755 /var/log/php-fpm "$domains_dir"
+
+  # Unix socket dir (php-fpm master must be able to create socket files here)
+  chown -R "${USERNAME}:${USERNAME}" "$sock_dir"
+  chmod 0775 "$sock_dir"
 
   # Ensure the main config exists
   [[ -f "$fpm_conf" ]] || { echo "Error: missing $fpm_conf"; return 1; }
