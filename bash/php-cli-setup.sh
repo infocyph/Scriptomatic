@@ -21,7 +21,7 @@ BASHRC="${HOME_DIR}/.bashrc"
 
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
 IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
-
+SOCK_DIR="/home/${USERNAME}/.run/php-fpm"
 #####################################################################
 # Helper utilities
 #####################################################################
@@ -65,18 +65,13 @@ configure_fpm_includes_and_dirs() {
 
   local fpm_conf="/usr/local/etc/php-fpm.conf"
   local domains_dir="/usr/local/etc/php-fpm.domains"
-  local sock_dir="/home/${USERNAME}/.run/php-fpm"
 
   # Create dirs
-  mkdir -p /var/log/php-fpm "$domains_dir" "$sock_dir"
+  mkdir -p /var/log/php-fpm "$domains_dir" "$SOCK_DIR"
 
   # Logs (php-fpm workers)
   chown -R www-data:www-data /var/log/php-fpm
   chmod 0755 /var/log/php-fpm "$domains_dir"
-
-  # Unix socket dir (php-fpm master must be able to create socket files here)
-  chown -R "${USERNAME}:${USERNAME}" "$sock_dir"
-  chmod 0775 "$sock_dir"
 
   # Ensure the main config exists
   [[ -f "$fpm_conf" ]] || { echo "Error: missing $fpm_conf"; return 1; }
@@ -198,7 +193,8 @@ create_user() {
 
   # Composer cache dir + ownership
   mkdir -p "${HOME_DIR}/.composer/vendor"
-  chown -R "${USERNAME}:${USERNAME}" "${HOME_DIR}"
+  chown -R "${USERNAME}:${USERNAME}" "${HOME_DIR}" "$SOCK_DIR"
+  chmod 0775 "$SOCK_DIR"
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
