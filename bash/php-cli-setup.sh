@@ -70,7 +70,7 @@ configure_fpm_includes_and_dirs() {
   mkdir -p /var/log/php-fpm "$domains_dir" "$SOCK_DIR"
 
   # Logs (php-fpm workers)
-  chown -R www-data:www-data /var/log/php-fpm
+  chown -R "${UID}:${GID}" /var/log/php-fpm
   chmod 0755 /var/log/php-fpm "$domains_dir"
 
   # Ensure the main config exists
@@ -260,12 +260,12 @@ main() {
   }
 
   install_os_and_php
-  configure_fpm_includes_and_dirs
   configure_required_ini
   configure_msmtp
   install_helper_scripts
   set_banner_hook
   create_user
+  configure_fpm_includes_and_dirs
   configure_oh_my_bash
   add_banner_snippet
   ensure_aliases
