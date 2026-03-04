@@ -22,6 +22,7 @@ BASHRC="${HOME_DIR}/.bashrc"
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
 IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
 SOCK_DIR="/home/${USERNAME}/.run/php-fpm"
+DOMAINS_DIR="/usr/local/etc/php-fpm.domains"
 #####################################################################
 # Helper utilities
 #####################################################################
@@ -64,14 +65,6 @@ configure_fpm_includes_and_dirs() {
   echo "👉 Configuring PHP-FPM includes (/usr/local/etc/php-fpm.conf)…"
 
   local fpm_conf="/usr/local/etc/php-fpm.conf"
-  local domains_dir="/usr/local/etc/php-fpm.domains"
-
-  # Create dirs
-  mkdir -p /var/log/php-fpm "$domains_dir" "$SOCK_DIR"
-
-  # Logs (php-fpm workers)
-  chown -R "${UID}:${GID}" /var/log/php-fpm
-  chmod 0755 /var/log/php-fpm "$domains_dir"
 
   # Ensure the main config exists
   [[ -f "$fpm_conf" ]] || { echo "Error: missing $fpm_conf"; return 1; }
@@ -83,7 +76,7 @@ configure_fpm_includes_and_dirs() {
 
   # Ensure Option-B include exists
   if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.domains/\*\.conf[[:space:]]*$' "$fpm_conf"; then
-    printf "\n; Option B: extra pool dir mounted from host\ninclude=%s/*.conf\n" "$domains_dir" >>"$fpm_conf"
+    printf "\n; Extra pool dir mounted from host\ninclude=%s/*.conf\n" "$DOMAINS_DIR" >>"$fpm_conf"
   fi
 }
 
@@ -191,10 +184,11 @@ create_user() {
   echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/"${USERNAME}"
   chmod 0440 /etc/sudoers.d/"${USERNAME}"
 
-  # Composer cache dir + ownership
-  mkdir -p "${HOME_DIR}/.composer/vendor"
+  # dir + ownership
+  mkdir -p "${HOME_DIR}/.composer/vendor" /var/log/php-fpm "$DOMAINS_DIR" "$SOCK_DIR"
   chown -R "${USERNAME}:${USERNAME}" "${HOME_DIR}" "$SOCK_DIR"
-  chmod 0775 "$SOCK_DIR"
+  chown -R "${UID}:${GID}" /var/log/php-fpm
+  chmod 0775 "$SOCK_DIR" /var/log/php-fpm "$DOMAINS_DIR"
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
@@ -264,8 +258,8 @@ main() {
   configure_msmtp
   install_helper_scripts
   set_banner_hook
-  create_user
   configure_fpm_includes_and_dirs
+  create_user
   configure_oh_my_bash
   add_banner_snippet
   ensure_aliases
