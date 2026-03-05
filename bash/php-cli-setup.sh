@@ -186,11 +186,24 @@ create_user() {
   echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/"${USERNAME}"
   chmod 0440 /etc/sudoers.d/"${USERNAME}"
 
-  # dir + ownership
-  mkdir -p "${HOME_DIR}/.composer/vendor" /var/log/php-fpm "$DOMAINS_DIR" "$SOCK_DIR"
-  chown -R "${USERNAME}:${USERNAME}" "${HOME_DIR}" "$SOCK_DIR"
-  chown -R "${UID}:${GID}" /var/log/php-fpm
-  chmod 0775 "$SOCK_DIR" /var/log/php-fpm "$DOMAINS_DIR"
+  # Create required dirs
+  ( umask 022
+    mkdir -p \
+      "${HOME_DIR}/.composer/vendor" \
+      /var/log/php-fpm \
+      "$DOMAINS_DIR" \
+      "$SOCK_DIR"
+  )
+
+  # Make sure php-fpm include glob never fails (needs at least one *.conf)
+  : > "${DOMAINS_DIR}/00-empty.conf"
+  chmod 0644 "${DOMAINS_DIR}/00-empty.conf" || true
+
+  # Ownership: keep it minimal + deterministic
+  chown -R "${UID}:${GID}" "${HOME_DIR}/.composer" "$SOCK_DIR" /var/log/php-fpm 2>/dev/null || true
+
+  # Permissions
+  chmod 0755 "$DOMAINS_DIR" "$SOCK_DIR" /var/log/php-fpm || true
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
