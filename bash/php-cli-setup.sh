@@ -22,7 +22,7 @@ BASHRC="${HOME_DIR}/.bashrc"
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
 IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
 SOCK_DIR="/home/${USERNAME}/.run/php-fpm"
-DOMAINS_DIR="/usr/local/etc/php-fpm.domains"
+DOMAINS_DIR="/usr/local/etc/php-fpm.domains/php${PHP_VERSION}"
 #####################################################################
 # Helper utilities
 #####################################################################
