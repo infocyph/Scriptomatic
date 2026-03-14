@@ -6,6 +6,32 @@ APP_DIR="${APP_DIR:-/app}"
 cd "$APP_DIR"
 
 ###############################################################################
+# Default runtime logs for all launched commands
+###############################################################################
+: "${NODE_LOG_ENABLED:=1}"
+: "${NODE_LOG_DIR:=/var/log/node-app}"
+: "${NODE_ACCESS_LOG:=${NODE_LOG_DIR}/access.log}"
+: "${NODE_ERROR_LOG:=${NODE_LOG_DIR}/error.log}"
+
+ensure_log_paths() {
+  mkdir -p "$(dirname "$NODE_ACCESS_LOG")" "$(dirname "$NODE_ERROR_LOG")" 2>/dev/null || true
+  touch "$NODE_ACCESS_LOG" "$NODE_ERROR_LOG" 2>/dev/null || true
+}
+
+run_cmd() {
+  if [ "$NODE_LOG_ENABLED" = "1" ]; then
+    ensure_log_paths
+    exec sh -c '
+      access="$1"
+      error="$2"
+      shift 2
+      exec "$@" >>"$access" 2>>"$error"
+    ' sh "$NODE_ACCESS_LOG" "$NODE_ERROR_LOG" "$@"
+  fi
+  exec "$@"
+}
+
+###############################################################################
 # Alpine Root CA bootstrap (runtime)
 ###############################################################################
 ROOTCA="${ROOTCA_PATH:-/etc/share/rootCA/rootCA.pem}"
@@ -22,14 +48,14 @@ fi
 
 # If user provided a command (docker run image <cmd>), run it directly
 if [ "$#" -gt 0 ]; then
-  exec "$@"
+  run_cmd "$@"
 fi
 
 ###############################################################################
 # Respect override if user explicitly sets NODE_CMD
 ###############################################################################
 if [ -n "${NODE_CMD:-}" ]; then
-  exec sh -lc "$NODE_CMD"
+  run_cmd sh -lc "$NODE_CMD"
 fi
 
 ###############################################################################
@@ -59,15 +85,15 @@ has_script() {
 }
 
 if has_script dev; then
-  exec npm run dev -- --host "$HOST" --port "$PORT"
+  run_cmd npm run dev -- --host "$HOST" --port "$PORT"
 fi
 
 if has_script start; then
-  exec npm start
+  run_cmd npm start
 fi
 
-[ -f server.js ] && exec node server.js
-[ -f index.js ] && exec node index.js
+[ -f server.js ] && run_cmd node server.js
+[ -f index.js ] && run_cmd node index.js
 
 echo "No runnable script found (dev/start missing; server.js/index.js not found)." >&2
 echo "Set NODE_CMD to override, e.g.: NODE_CMD='node app.js' or 'npm run serve'." >&2

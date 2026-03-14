@@ -18,6 +18,7 @@ BASHRC="${HOME_DIR}/.bashrc"
 : "${LINUX_PKG_VERSIONED:=}"
 : "${NODE_GLOBAL:=}"
 : "${NODE_GLOBAL_VERSIONED:=}"
+: "${NODE_LOG_DIR:=/var/log/node-app}"
 
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
 
@@ -154,9 +155,11 @@ create_user() {
   mkdir -p \
     "${HOME_DIR}/.npm" \
     "${HOME_DIR}/.cache" \
-    "${HOME_DIR}/.npm-global"
+    "${HOME_DIR}/.npm-global" \
+    "${NODE_LOG_DIR}"
 
   chown -R "${USERNAME}:${grp}" "${HOME_DIR}"
+  chown -R "${USERNAME}:${grp}" "${NODE_LOG_DIR}"
 
   # Fix ownership of helper scripts & banner hook
   chown root:root /etc/profile.d/banner-hook.sh
