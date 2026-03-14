@@ -10,8 +10,10 @@ cd "$APP_DIR"
 ###############################################################################
 : "${NODE_LOG_ENABLED:=1}"
 : "${NODE_LOG_DIR:=/var/log/node-app}"
-: "${NODE_ACCESS_LOG:=${NODE_LOG_DIR}/access.log}"
-: "${NODE_ERROR_LOG:=${NODE_LOG_DIR}/error.log}"
+: "${NODE_ACCESS_LOG_FILE:=access.log}"
+: "${NODE_ERROR_LOG_FILE:=error.log}"
+: "${NODE_ACCESS_LOG:=${NODE_LOG_DIR}/${NODE_ACCESS_LOG_FILE}}"
+: "${NODE_ERROR_LOG:=${NODE_LOG_DIR}/${NODE_ERROR_LOG_FILE}}"
 
 ensure_log_paths() {
   mkdir -p "$(dirname "$NODE_ACCESS_LOG")" "$(dirname "$NODE_ERROR_LOG")" 2>/dev/null || true
