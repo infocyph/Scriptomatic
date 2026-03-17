@@ -42,6 +42,14 @@ try_cmd() {
   fi
 }
 
+ensure_npm_cache_permissions() {
+  cache_dir="${NPM_CONFIG_CACHE:-$HOME/.npm}"
+
+  mkdir -p "$cache_dir" 2>/dev/null || true
+
+  sudo chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
+}
+
 ###############################################################################
 # Alpine Root CA bootstrap (runtime)
 ###############################################################################
@@ -94,6 +102,8 @@ install_deps() {
   [ -d node_modules ] && return 0
 
   echo "[node-entry] node_modules not found, installing dependencies..." >&2
+
+  ensure_npm_cache_permissions
 
   if [ -f pnpm-lock.yaml ]; then
     if has_cmd corepack; then corepack enable >/dev/null 2>&1 || true; fi
