@@ -33,6 +33,15 @@ run_cmd() {
   exec "$@"
 }
 
+try_cmd() {
+  if [ "$NODE_LOG_ENABLED" = "1" ]; then
+    ensure_log_paths
+    "$@" >>"$NODE_ACCESS_LOG" 2>>"$NODE_ERROR_LOG"
+  else
+    "$@"
+  fi
+}
+
 ###############################################################################
 # Alpine Root CA bootstrap (runtime)
 ###############################################################################
@@ -61,11 +70,10 @@ if [ -n "${NODE_CMD:-}" ]; then
 fi
 
 ###############################################################################
-# Defaults used by common dev servers (Vite, etc.)
+# Defaults used by common dev servers
 ###############################################################################
 : "${HOST:=0.0.0.0}"
 : "${PORT:=3000}"
-
 : "${NPM_AUDIT:=0}"
 : "${NPM_FUND:=0}"
 
@@ -73,31 +81,80 @@ npm_flags=""
 [ "$NPM_AUDIT" = "1" ] || npm_flags="$npm_flags --no-audit"
 [ "$NPM_FUND" = "1" ] || npm_flags="$npm_flags --no-fund"
 
-if [ ! -d node_modules ]; then
-  if [ -f package-lock.json ]; then
-    npm ci $npm_flags
-  else
-    npm install $npm_flags
-  fi
-fi
+has_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
 
 has_script() {
-  # Usage: has_script dev|start
   node -e "const p=require('./package.json');process.exit(p.scripts&&p.scripts['$1']?0:1)" 2>/dev/null
 }
 
-if has_script dev; then
-  run_cmd npm run dev -- --host "$HOST" --port "$PORT"
+install_deps() {
+  [ -f package.json ] || return 0
+  [ -d node_modules ] && return 0
+
+  echo "[node-entry] node_modules not found, installing dependencies..." >&2
+
+  if [ -f pnpm-lock.yaml ]; then
+    if has_cmd corepack; then corepack enable >/dev/null 2>&1 || true; fi
+    if has_cmd pnpm; then
+      pnpm install --frozen-lockfile || pnpm install
+      return 0
+    fi
+  fi
+
+  if [ -f yarn.lock ]; then
+    if has_cmd corepack; then corepack enable >/dev/null 2>&1 || true; fi
+    if has_cmd yarn; then
+      yarn install --frozen-lockfile || yarn install
+      return 0
+    fi
+  fi
+
+  if [ -f package-lock.json ]; then
+    npm ci $npm_flags || npm install $npm_flags
+    return 0
+  fi
+
+  npm install $npm_flags
+}
+
+run_dev() {
+  if has_script dev; then
+    echo "[node-entry] attempting dev script..." >&2
+    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+      exit 0
+    fi
+    echo "[node-entry] dev script failed; keeping container alive and trying fallbacks." >&2
+  fi
+}
+
+run_start() {
+  if has_script start; then
+    echo "[node-entry] attempting start script..." >&2
+    if try_cmd npm start; then
+      exit 0
+    fi
+    echo "[node-entry] start script failed; keeping container alive and trying fallbacks." >&2
+  fi
+}
+
+install_deps || echo "[node-entry] dependency install failed; continuing to fallbacks." >&2
+
+run_dev
+run_start
+
+if [ -f server.js ]; then
+  run_cmd node server.js
 fi
 
-if has_script start; then
-  run_cmd npm start
+if [ -f index.js ]; then
+  run_cmd node index.js
 fi
 
-[ -f server.js ] && run_cmd node server.js
-[ -f index.js ] && run_cmd node index.js
+echo "[node-entry] No runnable app started." >&2
+echo "[node-entry] Checked: npm scripts dev/start, server.js, index.js." >&2
+echo "[node-entry] Set NODE_CMD to override, e.g. NODE_CMD='node app.js'." >&2
 
-echo "No runnable script found (dev/start missing; server.js/index.js not found)." >&2
-echo "Set NODE_CMD to override, e.g.: NODE_CMD='node app.js' or 'npm run serve'." >&2
 command -v bash >/dev/null 2>&1 && exec bash
 exec sh
