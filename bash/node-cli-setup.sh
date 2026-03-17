@@ -175,6 +175,10 @@ configure_node() {
   # Enable corepack for pnpm/yarn (non-fatal)
   corepack enable >/dev/null 2>&1 || true
 
+  # Upgrade npm at build time
+  echo "👉 Updating npm…"
+  npm install -g npm@latest || npm install -g npm@next || true
+
   # Persist npm global prefix and PATH in .bashrc (user-owned)
   run_as_user bash -lc "touch '$BASHRC'"
 
