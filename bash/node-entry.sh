@@ -45,10 +45,13 @@ try_cmd() {
 
 ensure_npm_cache_permissions() {
   cache_dir="${NPM_CONFIG_CACHE:-$HOME/.npm}"
-
   mkdir -p "$cache_dir" 2>/dev/null || true
 
-  sudo chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
+  if command -v sudo >/dev/null 2>&1; then
+    sudo chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
+  else
+    chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
+  fi
 }
 
 ###############################################################################
@@ -150,45 +153,47 @@ install_deps() {
 }
 
 run_dev() {
-  if has_script dev; then
-    echo "[node-entry] attempting dev script..." >&2
-
-    framework="$(detect_framework)"
-
-    case "$framework" in
-    next)
-      if try_cmd env HOSTNAME="$HOST" PORT="$PORT" npm run dev -- --hostname "$HOST" --port "$PORT"; then
-        exit 0
-      fi
-      ;;
-    nuxt)
-      if try_cmd env NUXT_HOST="$HOST" HOST="$HOST" NUXT_PORT="$PORT" PORT="$PORT" npm run dev; then
-        exit 0
-      fi
-      ;;
-    vite)
-      if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
-        exit 0
-      fi
-      ;;
-    nest)
-      if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
-        exit 0
-      fi
-      ;;
-    *)
-      if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
-        exit 0
-      fi
-
-      if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
-        exit 0
-      fi
-      ;;
-    esac
-
-    echo "[node-entry] dev script failed; keeping container alive and trying fallbacks." >&2
+  if ! has_script dev; then
+    return 0
   fi
+
+  echo "[node-entry] attempting dev script..." >&2
+
+  framework="$(detect_framework)"
+
+  case "$framework" in
+  next)
+    if try_cmd env HOSTNAME="$HOST" PORT="$PORT" npm run dev -- --hostname "$HOST" --port "$PORT"; then
+      exit 0
+    fi
+    ;;
+  nuxt)
+    if try_cmd env NUXT_HOST="$HOST" HOST="$HOST" NUXT_PORT="$PORT" PORT="$PORT" npm run dev; then
+      exit 0
+    fi
+    ;;
+  vite)
+    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+      exit 0
+    fi
+    ;;
+  nest)
+    if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
+      exit 0
+    fi
+    ;;
+  *)
+    if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
+      exit 0
+    fi
+
+    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+      exit 0
+    fi
+    ;;
+  esac
+
+  echo "[node-entry] dev script failed; keeping container alive and trying fallbacks." >&2
 }
 
 run_start() {
