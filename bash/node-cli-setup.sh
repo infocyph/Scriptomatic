@@ -182,13 +182,23 @@ configure_node() {
   echo "👉 Updating npm…"
   npm install -g npm@latest || npm install -g npm@next || true
 
+  # Re-fix ownership in case root touched user cache/prefix during build
+  local grp
+  grp="$(group_by_gid "$GID" || echo "$USERNAME")"
+  chown -R "${USERNAME}:${grp}" \
+    "${HOME_DIR}/.npm" \
+    "${HOME_DIR}/.cache" \
+    "${HOME_DIR}/.npm-global" 2>/dev/null || true
+
   # Persist npm global prefix and PATH in .bashrc (user-owned)
   run_as_user bash -lc "touch '$BASHRC'"
 
   local l1='export NPM_CONFIG_PREFIX="$HOME/.npm-global"'
-  local l2='export PATH="$HOME/.npm-global/bin:$PATH"'
+  local l2='export NPM_CONFIG_CACHE="$HOME/.npm"'
+  local l3='export PATH="$HOME/.npm-global/bin:$PATH"'
   line_in_file "$l1" "$BASHRC" || echo "$l1" >>"$BASHRC"
   line_in_file "$l2" "$BASHRC" || echo "$l2" >>"$BASHRC"
+  line_in_file "$l3" "$BASHRC" || echo "$l3" >>"$BASHRC"
 
   # Optional global packages (comma-separated)
   if [[ -n "${NODE_GLOBAL//[[:space:]]/}" || -n "${NODE_GLOBAL_VERSIONED//[[:space:]]/}" ]]; then
