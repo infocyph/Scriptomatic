@@ -14,6 +14,7 @@ cd "$APP_DIR"
 : "${NODE_ERROR_LOG_FILE:=error.log}"
 : "${NODE_ACCESS_LOG:=${NODE_LOG_DIR}/${NODE_ACCESS_LOG_FILE}}"
 : "${NODE_ERROR_LOG:=${NODE_LOG_DIR}/${NODE_ERROR_LOG_FILE}}"
+: "${NODE_KEEPALIVE_ON_FAIL:=1}"
 
 ensure_log_paths() {
   mkdir -p "$(dirname "$NODE_ACCESS_LOG")" "$(dirname "$NODE_ERROR_LOG")" 2>/dev/null || true
@@ -97,6 +98,25 @@ has_script() {
   node -e "const p=require('./package.json');process.exit(p.scripts&&p.scripts['$1']?0:1)" 2>/dev/null
 }
 
+detect_framework() {
+  [ -f package.json ] || {
+    echo generic
+    return
+  }
+
+  node -e '
+    const p = require("./package.json");
+    const deps = { ...(p.dependencies || {}), ...(p.devDependencies || {}) };
+
+    if (deps.next) return console.log("next");
+    if (deps.nuxt || deps.nuxi) return console.log("nuxt");
+    if (deps["@nestjs/core"] || deps["@nestjs/cli"]) return console.log("nest");
+    if (deps.vite) return console.log("vite");
+
+    console.log("generic");
+  ' 2>/dev/null || echo generic
+}
+
 install_deps() {
   [ -f package.json ] || return 0
   [ -d node_modules ] && return 0
@@ -132,9 +152,41 @@ install_deps() {
 run_dev() {
   if has_script dev; then
     echo "[node-entry] attempting dev script..." >&2
-    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
-      exit 0
-    fi
+
+    framework="$(detect_framework)"
+
+    case "$framework" in
+    next)
+      if try_cmd env HOSTNAME="$HOST" PORT="$PORT" npm run dev -- --hostname "$HOST" --port "$PORT"; then
+        exit 0
+      fi
+      ;;
+    nuxt)
+      if try_cmd env NUXT_HOST="$HOST" HOST="$HOST" NUXT_PORT="$PORT" PORT="$PORT" npm run dev; then
+        exit 0
+      fi
+      ;;
+    vite)
+      if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+        exit 0
+      fi
+      ;;
+    nest)
+      if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
+        exit 0
+      fi
+      ;;
+    *)
+      if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
+        exit 0
+      fi
+
+      if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+        exit 0
+      fi
+      ;;
+    esac
+
     echo "[node-entry] dev script failed; keeping container alive and trying fallbacks." >&2
   fi
 }
@@ -166,5 +218,11 @@ echo "[node-entry] No runnable app started." >&2
 echo "[node-entry] Checked: npm scripts dev/start, server.js, index.js." >&2
 echo "[node-entry] Set NODE_CMD to override, e.g. NODE_CMD='node app.js'." >&2
 
-command -v bash >/dev/null 2>&1 && exec bash
-exec sh
+if [ "${NODE_KEEPALIVE_ON_FAIL}" = "1" ]; then
+  echo "[node-entry] Keeping container alive." >&2
+  while :; do
+    sleep 3600
+  done
+fi
+
+exit 1
