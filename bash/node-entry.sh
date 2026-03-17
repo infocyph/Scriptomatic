@@ -75,13 +75,6 @@ if [ "$#" -gt 0 ]; then
 fi
 
 ###############################################################################
-# Respect override if user explicitly sets NODE_CMD
-###############################################################################
-if [ -n "${NODE_CMD:-}" ]; then
-  run_cmd sh -lc "$NODE_CMD"
-fi
-
-###############################################################################
 # Defaults used by common dev servers
 ###############################################################################
 : "${HOST:=0.0.0.0}"
@@ -207,6 +200,20 @@ run_start() {
 }
 
 install_deps || echo "[node-entry] dependency install failed; continuing to fallbacks." >&2
+
+###############################################################################
+# Respect override if user explicitly sets NODE_CMD
+###############################################################################
+if [ -n "${NODE_CMD:-}" ]; then
+  echo "[node-entry] running custom NODE_CMD..." >&2
+  run_cmd env \
+    HOST="$HOST" \
+    PORT="$PORT" \
+    HOSTNAME="$HOST" \
+    NUXT_HOST="$HOST" \
+    NUXT_PORT="$PORT" \
+    sh -lc "$NODE_CMD"
+fi
 
 run_dev
 run_start
