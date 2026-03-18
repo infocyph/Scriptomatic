@@ -4,7 +4,7 @@ set -eu
 
 APP_DIR="${APP_DIR:-/app}"
 cd "$APP_DIR"
-
+# 20260318929
 ###############################################################################
 # Default runtime logs for all launched commands
 ###############################################################################
@@ -176,11 +176,11 @@ run_dev() {
     fi
     ;;
   *)
-    if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
+    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
       exit 0
     fi
 
-    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+    if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
       exit 0
     fi
     ;;
