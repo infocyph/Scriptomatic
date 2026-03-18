@@ -4,9 +4,9 @@ set -eu
 
 APP_DIR="${APP_DIR:-/app}"
 cd "$APP_DIR"
-# 20260318929
+
 ###############################################################################
-# Default runtime logs for all launched commands
+# Default runtime logs
 ###############################################################################
 : "${NODE_LOG_ENABLED:=1}"
 : "${NODE_LOG_DIR:=/var/log/node-app}"
@@ -31,6 +31,7 @@ run_cmd() {
       exec "$@" >>"$access" 2>>"$error"
     ' sh "$NODE_ACCESS_LOG" "$NODE_ERROR_LOG" "$@"
   fi
+
   exec "$@"
 }
 
@@ -43,54 +44,12 @@ try_cmd() {
   fi
 }
 
-ensure_npm_cache_permissions() {
-  cache_dir="${NPM_CONFIG_CACHE:-$HOME/.npm}"
-  mkdir -p "$cache_dir" 2>/dev/null || true
-
-  if command -v sudo >/dev/null 2>&1; then
-    sudo chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
-  else
-    chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
-  fi
-}
-
-###############################################################################
-# Alpine Root CA bootstrap (runtime)
-###############################################################################
-ROOTCA="${ROOTCA_PATH:-/etc/share/rootCA/rootCA.pem}"
-STAMP="/tmp/.rootca_installed"
-
-if [ -r "$ROOTCA" ]; then
-  export NODE_EXTRA_CA_CERTS="$ROOTCA"
-  if [ ! -f "$STAMP" ] && command -v update-ca-certificates >/dev/null 2>&1; then
-    sudo install -m 0644 "$ROOTCA" /usr/local/share/ca-certificates/rootCA.crt 2>/dev/null || true
-    sudo update-ca-certificates >/dev/null 2>&1 || true
-    : >"$STAMP" || true
-  fi
-fi
-
-# If user provided a command (docker run image <cmd>), run it directly
-if [ "$#" -gt 0 ]; then
-  run_cmd "$@"
-fi
-
-###############################################################################
-# Defaults used by common dev servers
-###############################################################################
-: "${HOST:=0.0.0.0}"
-: "${PORT:=3000}"
-: "${NPM_AUDIT:=0}"
-: "${NPM_FUND:=0}"
-
-npm_flags=""
-[ "$NPM_AUDIT" = "1" ] || npm_flags="$npm_flags --no-audit"
-[ "$NPM_FUND" = "1" ] || npm_flags="$npm_flags --no-fund"
-
 has_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
 has_script() {
+  [ -f package.json ] || return 1
   node -e "const p=require('./package.json');process.exit(p.scripts&&p.scripts['$1']?0:1)" 2>/dev/null
 }
 
@@ -113,6 +72,58 @@ detect_framework() {
   ' 2>/dev/null || echo generic
 }
 
+ensure_npm_cache_permissions() {
+  cache_dir="${NPM_CONFIG_CACHE:-$HOME/.npm}"
+  mkdir -p "$cache_dir" 2>/dev/null || true
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
+  else
+    chown -R "$(id -u):$(id -g)" "$cache_dir" 2>/dev/null || true
+  fi
+}
+
+###############################################################################
+# Alpine Root CA bootstrap
+###############################################################################
+ROOTCA="${ROOTCA_PATH:-/etc/share/rootCA/rootCA.pem}"
+STAMP="/tmp/.rootca_installed"
+
+if [ -r "$ROOTCA" ]; then
+  export NODE_EXTRA_CA_CERTS="$ROOTCA"
+  if [ ! -f "$STAMP" ] && command -v update-ca-certificates >/dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo install -m 0644 "$ROOTCA" /usr/local/share/ca-certificates/rootCA.crt 2>/dev/null || true
+      sudo update-ca-certificates >/dev/null 2>&1 || true
+    else
+      install -m 0644 "$ROOTCA" /usr/local/share/ca-certificates/rootCA.crt 2>/dev/null || true
+      update-ca-certificates >/dev/null 2>&1 || true
+    fi
+    : >"$STAMP" || true
+  fi
+fi
+
+###############################################################################
+# Direct command override
+###############################################################################
+if [ "$#" -gt 0 ]; then
+  run_cmd "$@"
+fi
+
+###############################################################################
+# Defaults used by common dev servers
+###############################################################################
+: "${HOST:=0.0.0.0}"
+: "${PORT:=3000}"
+: "${NPM_AUDIT:=0}"
+: "${NPM_FUND:=0}"
+
+export HOST PORT
+
+npm_flags=""
+[ "$NPM_AUDIT" = "1" ] || npm_flags="$npm_flags --no-audit"
+[ "$NPM_FUND" = "1" ] || npm_flags="$npm_flags --no-fund"
+
 install_deps() {
   [ -f package.json ] || return 0
   [ -d node_modules ] && return 0
@@ -122,7 +133,9 @@ install_deps() {
   ensure_npm_cache_permissions
 
   if [ -f pnpm-lock.yaml ]; then
-    if has_cmd corepack; then corepack enable >/dev/null 2>&1 || true; fi
+    if has_cmd corepack; then
+      corepack enable >/dev/null 2>&1 || true
+    fi
     if has_cmd pnpm; then
       pnpm install --frozen-lockfile || pnpm install
       return 0
@@ -130,7 +143,9 @@ install_deps() {
   fi
 
   if [ -f yarn.lock ]; then
-    if has_cmd corepack; then corepack enable >/dev/null 2>&1 || true; fi
+    if has_cmd corepack; then
+      corepack enable >/dev/null 2>&1 || true
+    fi
     if has_cmd yarn; then
       yarn install --frozen-lockfile || yarn install
       return 0
@@ -156,59 +171,50 @@ run_dev() {
 
   case "$framework" in
   next)
-    if try_cmd env HOSTNAME="$HOST" PORT="$PORT" npm run dev -- --hostname "$HOST" --port "$PORT"; then
-      exit 0
-    fi
+    run_cmd env HOSTNAME="$HOST" npm run dev -- --hostname "$HOST" --port "$PORT"
     ;;
+
   nuxt)
-    if try_cmd env NUXT_HOST="$HOST" HOST="$HOST" NUXT_PORT="$PORT" PORT="$PORT" npm run dev; then
-      exit 0
-    fi
+    run_cmd env NUXT_HOST="$HOST" NUXT_PORT="$PORT" npm run dev -- --host "$HOST" --port "$PORT"
     ;;
+
   vite)
-    if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
-      exit 0
-    fi
+    run_cmd npm run dev -- --host "$HOST" --port "$PORT"
     ;;
+
   nest)
-    if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
-      exit 0
-    fi
+    run_cmd npm run dev
     ;;
+
   *)
     if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
-      exit 0
+      run_cmd npm run dev -- --host "$HOST" --port "$PORT"
     fi
 
-    if try_cmd env HOST="$HOST" PORT="$PORT" npm run dev; then
-      exit 0
+    if try_cmd npm run dev; then
+      run_cmd npm run dev
     fi
+
+    echo "[node-entry] dev script failed; keeping container alive and trying fallbacks." >&2
     ;;
   esac
-
-  echo "[node-entry] dev script failed; keeping container alive and trying fallbacks." >&2
 }
 
 run_start() {
   if has_script start; then
     echo "[node-entry] attempting start script..." >&2
-    if try_cmd npm start; then
-      exit 0
-    fi
-    echo "[node-entry] start script failed; keeping container alive and trying fallbacks." >&2
+    run_cmd npm start
   fi
 }
 
 install_deps || echo "[node-entry] dependency install failed; continuing to fallbacks." >&2
 
 ###############################################################################
-# Respect override if user explicitly sets NODE_CMD
+# Respect explicit NODE_CMD
 ###############################################################################
 if [ -n "${NODE_CMD:-}" ]; then
   echo "[node-entry] running custom NODE_CMD..." >&2
   run_cmd env \
-    HOST="$HOST" \
-    PORT="$PORT" \
     HOSTNAME="$HOST" \
     NUXT_HOST="$HOST" \
     NUXT_PORT="$PORT" \
@@ -218,19 +224,14 @@ fi
 run_dev
 run_start
 
-if [ -f server.js ]; then
-  run_cmd node server.js
-fi
-
-if [ -f index.js ]; then
-  run_cmd node index.js
-fi
+[ -f server.js ] && run_cmd node server.js
+[ -f index.js ] && run_cmd node index.js
 
 echo "[node-entry] No runnable app started." >&2
 echo "[node-entry] Checked: npm scripts dev/start, server.js, index.js." >&2
 echo "[node-entry] Set NODE_CMD to override, e.g. NODE_CMD='node app.js'." >&2
 
-if [ "${NODE_KEEPALIVE_ON_FAIL}" = "1" ]; then
+if [ "$NODE_KEEPALIVE_ON_FAIL" = "1" ]; then
   echo "[node-entry] Keeping container alive." >&2
   while :; do
     sleep 3600
