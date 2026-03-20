@@ -14,7 +14,6 @@ fi
 
 HOME_DIR="${HOME_DIR:-/home/${USERNAME}}"
 
-GIT_SAFE_DIR_PATTERN="${GIT_SAFE_DIR_PATTERN:-/app/*}"
 GIT_CREDENTIAL_STORE="${GIT_CREDENTIAL_STORE:-${HOME_DIR}/.git-credentials}"
 GIT_USER_NAME="${GIT_USER_NAME:-}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-}"
@@ -25,7 +24,7 @@ export HOME="${HOME:-$HOME_DIR}"
 mkdir -p "$(dirname "$GIT_CREDENTIAL_STORE")"
 
 # ---- Safe directory (avoid "dubious ownership" in containers)
-git config --global --add safe.directory "$GIT_SAFE_DIR_PATTERN"
+git config --global --add safe.directory '/app/*'
 
 # ---- Credential store (file locked down)
 git config --global credential.helper "store --file ${GIT_CREDENTIAL_STORE}"
@@ -58,7 +57,7 @@ git config --global push.default simple
 git config --global push.autoSetupRemote true
 
 echo "✅ Git defaults configured for user '${USERNAME}'"
-echo "   safe.directory: ${GIT_SAFE_DIR_PATTERN}"
+echo "   safe.directory: /app/*"
 echo "   credential store: ${GIT_CREDENTIAL_STORE}"
 if [[ -n "${GIT_USER_NAME}" ]]; then echo "   user.name: ${GIT_USER_NAME}"; fi
 if [[ -n "${GIT_USER_EMAIL}" ]]; then echo "   user.email: ${GIT_USER_EMAIL}"; fi
