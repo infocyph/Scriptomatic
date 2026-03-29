@@ -6,13 +6,19 @@ die(){ echo "Error: $*" >&2; exit 1; }
 
 command -v git >/dev/null 2>&1 || die "git not found"
 
-USERNAME="${USERNAME:-${USER:-}}"
-if [[ -z "${USERNAME}" ]]; then
-  USERNAME="$(id -un 2>/dev/null || true)"
+CURRENT_USER="${USER:-$(id -un 2>/dev/null || true)}"
+HOME_DIR="${HOME_DIR:-${HOME:-}}"
+if [[ -z "${HOME_DIR}" ]]; then
+  if [[ "$(id -u 2>/dev/null || echo 0)" == "0" ]]; then
+    HOME_DIR="/root"
+  elif [[ -n "${CURRENT_USER}" ]]; then
+    HOME_DIR="/home/${CURRENT_USER}"
+  fi
 fi
-[[ -n "${USERNAME}" ]] || die "could not determine USERNAME"
-
-HOME_DIR="${HOME_DIR:-/home/${USERNAME}}"
+[[ -n "${HOME_DIR}" ]] || die "could not determine HOME directory"
+if [[ -z "${CURRENT_USER}" ]]; then
+  CURRENT_USER="$(basename "${HOME_DIR}")"
+fi
 
 GIT_CREDENTIAL_STORE="${GIT_CREDENTIAL_STORE:-${HOME_DIR}/.git-credentials}"
 GIT_CREDENTIAL_MODE="${GIT_CREDENTIAL_MODE:-auto}" # auto|keychain+cache|cache|store|none
@@ -101,7 +107,7 @@ git config --global diff.algorithm histogram
 git config --global push.default simple
 git config --global push.autoSetupRemote true
 
-echo "✅ Git defaults configured for user '${USERNAME}'"
+echo "✅ Git defaults configured for user '${CURRENT_USER}'"
 echo "   safe.directory: /app/*"
 echo "   credential mode: ${GIT_CREDENTIAL_MODE}"
 echo "   credential helpers:"
