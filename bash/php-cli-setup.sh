@@ -39,7 +39,7 @@ install_os_and_php() {
   echo "👉 Installing base Alpine packages and PHP extensions…"
   apk update
   apk add --no-cache \
-    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates msmtp \
+    curl git git-credential-libsecret bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates msmtp \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   if [[ ! -x /usr/local/bin/install-php-extensions ]]; then
@@ -139,7 +139,6 @@ install_helper_scripts() {
     "https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx|/usr/local/bin/gitx"
     "https://raw.githubusercontent.com/infocyph/Toolset/main/ChromaCat/chromacat|/usr/local/bin/chromacat"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh|/usr/local/bin/show-banner"
-    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh|/usr/local/bin/git-default"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/php-entry.sh|/usr/local/bin/php-entry"
   ) dests=() url dst pair

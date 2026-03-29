@@ -39,7 +39,7 @@ install_os() {
   echo "👉 Installing base Alpine packages…"
   apk update
   apk add --no-cache \
-    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
+    curl git git-credential-libsecret bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   mkdir -p /usr/local/share/ca-certificates
@@ -59,7 +59,6 @@ install_helper_scripts() {
     "https://raw.githubusercontent.com/infocyph/Toolset/main/ChromaCat/chromacat|/usr/local/bin/chromacat"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh|/usr/local/bin/show-banner"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
-    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/git-default.sh|/usr/local/bin/git-default"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/node-entry.sh|/usr/local/bin/node-entry"
   ) dests=() url dst pair
 

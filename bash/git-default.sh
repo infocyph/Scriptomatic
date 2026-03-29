@@ -6,29 +6,80 @@ die(){ echo "Error: $*" >&2; exit 1; }
 
 command -v git >/dev/null 2>&1 || die "git not found"
 
-USERNAME="${USERNAME:-${USER:-}}"
-if [[ -z "${USERNAME}" ]]; then
-  USERNAME="$(id -un 2>/dev/null || true)"
+CURRENT_USER="${USER:-$(id -un 2>/dev/null || true)}"
+HOME_DIR="${HOME_DIR:-${HOME:-}}"
+if [[ -z "${HOME_DIR}" ]]; then
+  if [[ "$(id -u 2>/dev/null || echo 0)" == "0" ]]; then
+    HOME_DIR="/root"
+  elif [[ -n "${CURRENT_USER}" ]]; then
+    HOME_DIR="/home/${CURRENT_USER}"
+  fi
 fi
-[[ -n "${USERNAME}" ]] || die "could not determine USERNAME"
-
-HOME_DIR="${HOME_DIR:-/home/${USERNAME}}"
+[[ -n "${HOME_DIR}" ]] || die "could not determine HOME directory"
+if [[ -z "${CURRENT_USER}" ]]; then
+  CURRENT_USER="$(basename "${HOME_DIR}")"
+fi
 
 GIT_CREDENTIAL_STORE="${GIT_CREDENTIAL_STORE:-${HOME_DIR}/.git-credentials}"
+GIT_CREDENTIAL_MODE="${GIT_CREDENTIAL_MODE:-auto}" # auto|keychain+cache|cache|store|none
+GIT_CREDENTIAL_CACHE_TIMEOUT="${GIT_CREDENTIAL_CACHE_TIMEOUT:-3600}"
 GIT_USER_NAME="${GIT_USER_NAME:-}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-}"
 
 # Ensure HOME for git config (important if running as root or under docker build)
 export HOME="${HOME:-$HOME_DIR}"
 
-mkdir -p "$(dirname "$GIT_CREDENTIAL_STORE")"
+detect_keychain_helper() {
+  local helper_path git_exec_path
+
+  if command -v git-credential-libsecret >/dev/null 2>&1; then
+    echo "libsecret"
+    return 0
+  fi
+
+  git_exec_path="$(git --exec-path 2>/dev/null || true)"
+  helper_path="${git_exec_path}/git-credential-libsecret"
+  if [[ -x "${helper_path}" ]]; then
+    echo "${helper_path}"
+    return 0
+  fi
+
+  return 1
+}
+
+configure_git_credentials() {
+  local keychain_helper
+
+  git config --global --unset-all credential.helper >/dev/null 2>&1 || true
+
+  case "${GIT_CREDENTIAL_MODE}" in
+    auto|keychain+cache)
+      git config --global --add credential.helper "cache --timeout=${GIT_CREDENTIAL_CACHE_TIMEOUT}"
+      if keychain_helper="$(detect_keychain_helper)"; then
+        git config --global --add credential.helper "${keychain_helper}"
+      fi
+      ;;
+    cache)
+      git config --global --add credential.helper "cache --timeout=${GIT_CREDENTIAL_CACHE_TIMEOUT}"
+      ;;
+    store)
+      mkdir -p "$(dirname "$GIT_CREDENTIAL_STORE")"
+      git config --global credential.helper "store --file ${GIT_CREDENTIAL_STORE}"
+      ( umask 077; touch "${GIT_CREDENTIAL_STORE}" )
+      ;;
+    none)
+      ;;
+    *)
+      die "invalid GIT_CREDENTIAL_MODE: '${GIT_CREDENTIAL_MODE}' (expected: auto|keychain+cache|cache|store|none)"
+      ;;
+  esac
+}
 
 # ---- Safe directory (avoid "dubious ownership" in containers)
 git config --global --add safe.directory '/app/*'
 
-# ---- Credential store (file locked down)
-git config --global credential.helper "store --file ${GIT_CREDENTIAL_STORE}"
-( umask 077; : > "${GIT_CREDENTIAL_STORE}" )
+# ---- Credential helpers
+configure_git_credentials
 
 # ---- Optional identity
 if [[ -n "${GIT_USER_NAME}" ]]; then
@@ -56,8 +107,18 @@ git config --global diff.algorithm histogram
 git config --global push.default simple
 git config --global push.autoSetupRemote true
 
-echo "✅ Git defaults configured for user '${USERNAME}'"
+echo "✅ Git defaults configured for user '${CURRENT_USER}'"
 echo "   safe.directory: /app/*"
-echo "   credential store: ${GIT_CREDENTIAL_STORE}"
+echo "   credential mode: ${GIT_CREDENTIAL_MODE}"
+echo "   credential helpers:"
+credential_helpers="$(git config --global --get-all credential.helper || true)"
+if [[ -n "${credential_helpers}" ]]; then
+  printf '%s\n' "${credential_helpers}" | sed 's/^/     - /'
+else
+  echo "     - (none)"
+fi
+if [[ "${GIT_CREDENTIAL_MODE}" == "store" ]]; then
+  echo "   credential store: ${GIT_CREDENTIAL_STORE}"
+fi
 if [[ -n "${GIT_USER_NAME}" ]]; then echo "   user.name: ${GIT_USER_NAME}"; fi
 if [[ -n "${GIT_USER_EMAIL}" ]]; then echo "   user.email: ${GIT_USER_EMAIL}"; fi
