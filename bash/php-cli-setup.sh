@@ -164,6 +164,12 @@ if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
 fi
 EOF
   chmod +x /etc/profile.d/banner-hook.sh
+
+  cat >/etc/profile.d/git-config-global.sh <<'EOF'
+#!/bin/sh
+export GIT_CONFIG_GLOBAL=/git-config/.gitconfig
+EOF
+  chmod +x /etc/profile.d/git-config-global.sh
 }
 
 #####################################################################
@@ -256,6 +262,9 @@ ensure_aliases() {
   for alias_cmd in "${aliases[@]}"; do
     line_in_file "$alias_cmd" "$BASHRC" || echo "$alias_cmd" >>"$BASHRC"
   done
+
+  local git_cfg='export GIT_CONFIG_GLOBAL="/git-config/.gitconfig"'
+  line_in_file "$git_cfg" "$BASHRC" || echo "$git_cfg" >>"$BASHRC"
 }
 
 #####################################################################

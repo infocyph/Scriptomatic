@@ -6,28 +6,14 @@ die(){ echo "Error: $*" >&2; exit 1; }
 
 command -v git >/dev/null 2>&1 || die "git not found"
 
-CURRENT_USER="${USER:-$(id -un 2>/dev/null || true)}"
-HOME_DIR="${HOME_DIR:-${HOME:-}}"
-if [[ -z "${HOME_DIR}" ]]; then
-  if [[ "$(id -u 2>/dev/null || echo 0)" == "0" ]]; then
-    HOME_DIR="/root"
-  elif [[ -n "${CURRENT_USER}" ]]; then
-    HOME_DIR="/home/${CURRENT_USER}"
-  fi
-fi
-[[ -n "${HOME_DIR}" ]] || die "could not determine HOME directory"
-if [[ -z "${CURRENT_USER}" ]]; then
-  CURRENT_USER="$(basename "${HOME_DIR}")"
-fi
+CURRENT_USER="${USER:-$(id -un 2>/dev/null || echo unknown)}"
+HOME_DIR="${HOME_DIR:-${HOME:-/root}}"
 
 GIT_CREDENTIAL_STORE="${GIT_CREDENTIAL_STORE:-${HOME_DIR}/.git-credentials}"
 GIT_CREDENTIAL_MODE="${GIT_CREDENTIAL_MODE:-auto}" # auto|keychain+cache|cache|store|none
 GIT_CREDENTIAL_CACHE_TIMEOUT="${GIT_CREDENTIAL_CACHE_TIMEOUT:-3600}"
 GIT_USER_NAME="${GIT_USER_NAME:-}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-}"
-
-# Ensure HOME for git config (important if running as root or under docker build)
-export HOME="${HOME:-$HOME_DIR}"
 
 detect_keychain_helper() {
   local helper_path git_exec_path

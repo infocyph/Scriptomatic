@@ -85,6 +85,12 @@ if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
 fi
 EOF
   chmod +x /etc/profile.d/banner-hook.sh
+
+  cat >/etc/profile.d/git-config-global.sh <<'EOF'
+#!/bin/sh
+export GIT_CONFIG_GLOBAL=/git-config/.gitconfig
+EOF
+  chmod +x /etc/profile.d/git-config-global.sh
 }
 
 #####################################################################
@@ -195,9 +201,11 @@ configure_node() {
   local l1='export NPM_CONFIG_PREFIX="$HOME/.npm-global"'
   local l2='export NPM_CONFIG_CACHE="$HOME/.npm"'
   local l3='export PATH="$HOME/.npm-global/bin:$PATH"'
+  local l4='export GIT_CONFIG_GLOBAL="/git-config/.gitconfig"'
   line_in_file "$l1" "$BASHRC" || echo "$l1" >>"$BASHRC"
   line_in_file "$l2" "$BASHRC" || echo "$l2" >>"$BASHRC"
   line_in_file "$l3" "$BASHRC" || echo "$l3" >>"$BASHRC"
+  line_in_file "$l4" "$BASHRC" || echo "$l4" >>"$BASHRC"
 
   # Optional global packages (comma-separated)
   if [[ -n "${NODE_GLOBAL//[[:space:]]/}" || -n "${NODE_GLOBAL_VERSIONED//[[:space:]]/}" ]]; then
