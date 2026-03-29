@@ -39,7 +39,7 @@ install_os() {
   echo "👉 Installing base Alpine packages…"
   apk update
   apk add --no-cache \
-    curl git bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
+    curl git git-credential-libsecret bash shadow sudo tzdata figlet ncurses musl-locales gawk ca-certificates \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   mkdir -p /usr/local/share/ca-certificates
