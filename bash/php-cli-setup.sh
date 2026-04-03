@@ -141,6 +141,7 @@ install_helper_scripts() {
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh|/usr/local/bin/show-banner"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/php-entry.sh|/usr/local/bin/php-entry"
+    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/alias-maker.sh|/usr/local/bin/alias-maker"
   ) dests=() url dst pair
   for pair in "${helpers[@]}"; do
     IFS='|' read -r url dst <<< "$pair"
@@ -252,19 +253,11 @@ fi'
 }
 
 #####################################################################
-# 7. Handy aliases (original style)
+# 7. Alias setup
 #####################################################################
-ensure_aliases() {
-  echo "👉 Adding handy aliases…"
-  local aliases=(
-    'alias ll="ls -la"'
-  )
-  for alias_cmd in "${aliases[@]}"; do
-    line_in_file "$alias_cmd" "$BASHRC" || echo "$alias_cmd" >>"$BASHRC"
-  done
-
-  local git_cfg='export GIT_CONFIG_GLOBAL="/git-config/.gitconfig"'
-  line_in_file "$git_cfg" "$BASHRC" || echo "$git_cfg" >>"$BASHRC"
+run_alias_maker() {
+  echo "👉 Applying aliases via alias-maker…"
+  run_as_user /usr/local/bin/alias-maker
 }
 
 #####################################################################
@@ -285,7 +278,7 @@ main() {
   create_user
   configure_oh_my_bash
   add_banner_snippet
-  ensure_aliases
+  run_alias_maker
 
   echo "✅ cli-setup complete for ${USERNAME}"
   rm -rf /var/cache/apk/* /tmp/* /var/tmp/*

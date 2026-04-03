@@ -60,6 +60,7 @@ install_helper_scripts() {
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh|/usr/local/bin/show-banner"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
     "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/node-entry.sh|/usr/local/bin/node-entry"
+    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/alias-maker.sh|/usr/local/bin/alias-maker"
   ) dests=() url dst pair
 
   for pair in "${helpers[@]}"; do
@@ -250,17 +251,11 @@ fi'
 }
 
 #####################################################################
-# 8. Handy aliases
+# 8. Alias setup
 #####################################################################
-ensure_aliases() {
-  echo "👉 Adding handy aliases…"
-  local aliases=(
-    'alias ll="ls -la"'
-  )
-  local a
-  for a in "${aliases[@]}"; do
-    line_in_file "$a" "$BASHRC" || echo "$a" >>"$BASHRC"
-  done
+run_alias_maker() {
+  echo "👉 Applying aliases via alias-maker…"
+  run_as_user /usr/local/bin/alias-maker
 }
 
 #####################################################################
@@ -276,7 +271,7 @@ main() {
   configure_node
   configure_oh_my_bash
   add_banner_snippet
-  ensure_aliases
+  run_alias_maker
 
   echo "✅ node cli-setup complete for ${USERNAME}"
   rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
