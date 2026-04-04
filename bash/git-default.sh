@@ -62,7 +62,9 @@ configure_git_credentials() {
 }
 
 # ---- Safe directory (avoid "dubious ownership" in containers)
-git config --global --add safe.directory '/app/*'
+if ! git config --global --get-all safe.directory | grep -Fxq '/app/*'; then
+  git config --global --add safe.directory '/app/*'
+fi
 
 # ---- Credential helpers
 configure_git_credentials
