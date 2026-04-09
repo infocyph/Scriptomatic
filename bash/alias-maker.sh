@@ -51,8 +51,8 @@ ALIASES=(
   'alias gwip="git add -A && git commit -m \"wip\""'
   'alias gundo="git reset --soft HEAD~1"'
   'alias gcleanbranches="git_clean_merged_branches"'
-  'alias gfixeol="git_fix_eol"'
-  'alias d2u="git_fix_eol"'
+  'alias gfixeol="d2u"'
+  'alias d2u="git diff --name-only -z | xargs -0 dos2unix"'
   # JS/PHP helpers
   'alias nrd="npm run dev"'
   'alias nrt="npm run test"'
