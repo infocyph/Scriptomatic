@@ -51,8 +51,8 @@ ALIASES=(
   'alias gwip="git add -A && git commit -m \"wip\""'
   'alias gundo="git reset --soft HEAD~1"'
   'alias gcleanbranches="git_clean_merged_branches"'
-  'alias gfixeol="d2u"'
-  'alias d2u="git diff --name-only -z | xargs -0 dos2unix"'
+  'alias d2u="git_fix_eol"'
+  'alias d2utree="convert_tree_eol"'
   # JS/PHP helpers
   'alias nrd="npm run dev"'
   'alias nrt="npm run test"'
@@ -65,7 +65,105 @@ for alias_cmd in "${ALIASES[@]}"; do
 done
 
 FUNCTION_BLOCK_MARKER='# >>> scriptomatic-utils >>>'
-FUNCTION_BLOCK_CONTENT=$'# >>> scriptomatic-utils >>>\n# Convert line endings of changed files in current git repo.\ngit_fix_eol() {\n  command -v dos2unix >/dev/null 2>&1 || {\n    echo "dos2unix is not installed."\n    return 1\n  }\n\n  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {\n    echo "Not inside a git repository."\n    return 1\n  }\n\n  local files\n  files="$(git diff --name-only)"\n  if [[ -z "$files" ]]; then\n    echo "No changed files to convert."\n    return 0\n  fi\n\n  git diff --name-only -z | xargs -0 dos2unix\n}\n\n# Delete merged local branches except protected ones.\ngit_clean_merged_branches() {\n  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {\n    echo "Not inside a git repository."\n    return 1\n  }\n\n  local deleted=0\n  local branch\n  while IFS= read -r branch; do\n    [[ -z "$branch" ]] && continue\n    case "$branch" in\n      main|master|develop) continue ;;\n    esac\n\n    if git branch -d "$branch"; then\n      deleted=1\n    fi\n  done < <(git branch --merged | sed \'s/^[* ]*//\')\n\n  [[ "$deleted" -eq 1 ]] || echo "No merged branches to delete."\n}\n\n# Create a directory and cd into it.\nmkcd() {\n  [[ $# -eq 1 ]] || {\n    echo "Usage: mkcd <dir>"\n    return 1\n  }\n\n  mkdir -p "$1" && cd "$1"\n}\n# <<< scriptomatic-utils <<<'
+FUNCTION_BLOCK_CONTENT="$(cat <<'EOF'
+# >>> scriptomatic-utils >>>
+# Convert line endings of staged and unstaged files in current git repo.
+git_fix_eol() {
+  command -v dos2unix >/dev/null 2>&1 || {
+    echo "dos2unix is not installed."
+    return 1
+  }
+
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "Not inside a git repository."
+    return 1
+  }
+
+  local -a files=()
+  local -A seen=()
+  local file
+
+  while IFS= read -r -d '' file; do
+    [[ -n "$file" && -f "$file" ]] || continue
+    if [[ -z "${seen[$file]+x}" ]]; then
+      files+=("$file")
+      seen["$file"]=1
+    fi
+  done < <(
+    git diff --name-only -z
+    git diff --cached --name-only -z
+  )
+
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    echo "No staged or unstaged files to convert."
+    return 0
+  fi
+
+  dos2unix "${files[@]}"
+}
+
+# Convert files matching a glob pattern while skipping dependency and hidden directories.
+convert_tree_eol() {
+  command -v dos2unix >/dev/null 2>&1 || {
+    echo "dos2unix is not installed."
+    return 1
+  }
+
+  local pattern="${1:-*.php}"
+  local file
+  local tmp_file
+
+  while IFS= read -r -d '' file; do
+    tmp_file="$(mktemp)" || {
+      echo "Failed to create temp file."
+      return 1
+    }
+
+    if dos2unix -n "$file" "$tmp_file" >/dev/null 2>&1; then
+      cat "$tmp_file" > "$file"
+    fi
+
+    rm -f "$tmp_file"
+  done < <(find . \( -type d \( -name 'vendor' -o -name 'node_modules' -o \( -name '.*' ! -path '.' \) \) \) -prune -o -name "$pattern" -type f -print0)
+
+  echo "Conversion complete (skipped vendor/node_modules and hidden dirs)."
+}
+
+# Delete merged local branches except protected ones.
+git_clean_merged_branches() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "Not inside a git repository."
+    return 1
+  }
+
+  local deleted=0
+  local branch
+  while IFS= read -r branch; do
+    [[ -z "$branch" ]] && continue
+    case "$branch" in
+      main|master|develop) continue ;;
+    esac
+
+    if git branch -d "$branch"; then
+      deleted=1
+    fi
+  done < <(git branch --merged | sed 's/^[* ]*//')
+
+  [[ "$deleted" -eq 1 ]] || echo "No merged branches to delete."
+}
+
+# Create a directory and cd into it.
+mkcd() {
+  [[ $# -eq 1 ]] || {
+    echo "Usage: mkcd <dir>"
+    return 1
+  }
+
+  mkdir -p "$1" && cd "$1"
+}
+# <<< scriptomatic-utils <<<
+EOF
+)"
 append_block_if_missing "$FUNCTION_BLOCK_MARKER" "$FUNCTION_BLOCK_CONTENT"
 
 echo "Common aliases applied."
