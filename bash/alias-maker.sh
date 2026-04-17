@@ -9,10 +9,26 @@ append_if_missing() {
   line_in_file "$line" "$BASHRC" || echo "$line" >>"$BASHRC"
 }
 block_in_file() { grep -qF "$1" "$BASHRC" 2>/dev/null; }
-append_block_if_missing() {
-  local marker="$1"
-  local content="$2"
-  block_in_file "$marker" || printf "\n%s\n" "$content" >>"$BASHRC"
+upsert_block() {
+  local start_marker="$1"
+  local end_marker="$2"
+  local content="$3"
+  local tmp_file
+
+  if block_in_file "$start_marker"; then
+    tmp_file="$(mktemp)" || {
+      echo "Failed to create temp file."
+      return 1
+    }
+
+    awk -v start="$start_marker" -v end="$end_marker" '
+      $0 == start { in_block=1; next }
+      in_block && $0 == end { in_block=0; next }
+      !in_block { print }
+    ' "$BASHRC" >"$tmp_file" && mv "$tmp_file" "$BASHRC"
+  fi
+
+  printf "\n%s\n" "$content" >>"$BASHRC"
 }
 
 mkdir -p "$(dirname "$BASHRC")"
@@ -65,8 +81,22 @@ for alias_cmd in "${ALIASES[@]}"; do
 done
 
 FUNCTION_BLOCK_MARKER='# >>> scriptomatic-utils >>>'
+FUNCTION_BLOCK_END_MARKER='# <<< scriptomatic-utils <<<'
 FUNCTION_BLOCK_CONTENT="$(cat <<'EOF'
 # >>> scriptomatic-utils >>>
+# Run dos2unix on a file, retrying with sudo when direct write is blocked.
+dos2unix_maybe_sudo() {
+  local file="$1"
+
+  if [[ -w "$file" ]]; then
+    dos2unix "$file" >/dev/null 2>&1
+    return $?
+  fi
+
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo dos2unix "$file" >/dev/null 2>&1
+}
+
 # Convert line endings of staged and unstaged files in current git repo.
 git_fix_eol() {
   command -v dos2unix >/dev/null 2>&1 || {
@@ -99,7 +129,20 @@ git_fix_eol() {
     return 0
   fi
 
-  dos2unix "${files[@]}"
+  local converted=0
+  local failed=0
+
+  for file in "${files[@]}"; do
+    if dos2unix_maybe_sudo "$file"; then
+      converted=$((converted + 1))
+    else
+      echo "Failed to convert: $file"
+      failed=1
+    fi
+  done
+
+  echo "Converted $converted file(s)."
+  [[ "$failed" -eq 0 ]]
 }
 
 # Convert files matching a glob pattern while skipping dependency and hidden directories.
@@ -111,22 +154,20 @@ convert_tree_eol() {
 
   local pattern="${1:-*.php}"
   local file
-  local tmp_file
+  local converted=0
+  local failed=0
 
   while IFS= read -r -d '' file; do
-    tmp_file="$(mktemp)" || {
-      echo "Failed to create temp file."
-      return 1
-    }
-
-    if dos2unix -n "$file" "$tmp_file" >/dev/null 2>&1; then
-      cat "$tmp_file" > "$file"
+    if dos2unix_maybe_sudo "$file"; then
+      converted=$((converted + 1))
+    else
+      echo "Failed to convert: $file"
+      failed=1
     fi
-
-    rm -f "$tmp_file"
   done < <(find . \( -type d \( -name 'vendor' -o -name 'node_modules' -o \( -name '.*' ! -path '.' \) \) \) -prune -o -name "$pattern" -type f -print0)
 
-  echo "Conversion complete (skipped vendor/node_modules and hidden dirs)."
+  echo "Converted $converted file(s) (skipped vendor/node_modules and hidden dirs)."
+  [[ "$failed" -eq 0 ]]
 }
 
 # Delete merged local branches except protected ones.
@@ -164,6 +205,6 @@ mkcd() {
 # <<< scriptomatic-utils <<<
 EOF
 )"
-append_block_if_missing "$FUNCTION_BLOCK_MARKER" "$FUNCTION_BLOCK_CONTENT"
+upsert_block "$FUNCTION_BLOCK_MARKER" "$FUNCTION_BLOCK_END_MARKER" "$FUNCTION_BLOCK_CONTENT"
 
 echo "Common aliases applied."
