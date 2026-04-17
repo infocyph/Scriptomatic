@@ -67,6 +67,7 @@ ALIASES=(
   'alias gwip="git add -A && git commit -m \"wip\""'
   'alias gundo="git reset --soft HEAD~1"'
   'alias gcleanbranches="git_clean_merged_branches"'
+  'alias gscoff="git config --local core.safecrlf false"'
   'alias d2u="git_fix_eol"'
   'alias d2utree="convert_tree_eol"'
   # JS/PHP helpers
