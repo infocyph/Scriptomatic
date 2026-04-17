@@ -14,6 +14,14 @@ GIT_CREDENTIAL_MODE="${GIT_CREDENTIAL_MODE:-auto}" # auto|keychain+cache|cache|s
 GIT_CREDENTIAL_CACHE_TIMEOUT="${GIT_CREDENTIAL_CACHE_TIMEOUT:-3600}"
 GIT_USER_NAME="${GIT_USER_NAME:-}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-}"
+HOST_OS="${HOST_OS:-}"
+
+host_os_normalized="$(printf '%s' "${HOST_OS}" | tr '[:upper:]' '[:lower:]')"
+default_safecrlf="true"
+if [[ "${host_os_normalized}" == "windows" ]]; then
+  default_safecrlf="false"
+fi
+GIT_SAFECRLF="${GIT_SAFECRLF:-${default_safecrlf}}" # true|false|warn
 
 detect_keychain_helper() {
   local helper_path git_exec_path
@@ -80,7 +88,14 @@ fi
 # ---- Recommended defaults (LF, safer pull/push, better diffs)
 git config --global core.autocrlf false
 git config --global core.eol lf
-git config --global core.safecrlf true
+case "${GIT_SAFECRLF}" in
+  true|false|warn)
+    git config --global core.safecrlf "${GIT_SAFECRLF}"
+    ;;
+  *)
+    die "invalid GIT_SAFECRLF: '${GIT_SAFECRLF}' (expected: true|false|warn)"
+    ;;
+esac
 
 git config --global pull.rebase true
 git config --global rebase.autoStash true
@@ -97,6 +112,10 @@ git config --global push.autoSetupRemote true
 
 echo "✅ Git defaults configured for user '${CURRENT_USER}'"
 echo "   safe.directory: /app/*"
+if [[ -n "${HOST_OS}" ]]; then
+  echo "   host os: ${HOST_OS}"
+fi
+echo "   core.safecrlf: ${GIT_SAFECRLF}"
 echo "   credential mode: ${GIT_CREDENTIAL_MODE}"
 echo "   credential helpers:"
 credential_helpers="$(git config --global --get-all credential.helper || true)"
