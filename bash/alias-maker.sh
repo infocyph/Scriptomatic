@@ -84,14 +84,22 @@ FUNCTION_BLOCK_MARKER='# >>> scriptomatic-utils >>>'
 FUNCTION_BLOCK_END_MARKER='# <<< scriptomatic-utils <<<'
 FUNCTION_BLOCK_CONTENT="$(cat <<'EOF'
 # >>> scriptomatic-utils >>>
-# Run dos2unix on a file, retrying with sudo when direct write is blocked.
-dos2unix_maybe_sudo() {
+# Remove dos2unix temp files left behind after failed conversions.
+cleanup_dos2unix_tmp() {
+  local file="$1"
+  local dir
+
+  dir="$(dirname -- "$file")"
+  find "$dir" -maxdepth 1 -type f -name 'd2utmp*' -exec rm -f -- {} + >/dev/null 2>&1 || true
+}
+
+# Run dos2unix on a file and clean temp artifacts if conversion fails.
+dos2unix_file() {
   local file="$1"
 
-  dos2unix "$file" >/dev/null 2>&1 && return 0
-
-  command -v sudo >/dev/null 2>&1 || return 1
-  sudo dos2unix "$file" >/dev/null 2>&1
+  sudo dos2unix "$file" >/dev/null 2>&1 && return 0
+  cleanup_dos2unix_tmp "$file"
+  return 1
 }
 
 # Convert line endings of staged and unstaged files in current git repo.
@@ -130,10 +138,14 @@ git_fix_eol() {
   local failed=0
 
   for file in "${files[@]}"; do
-    if dos2unix_maybe_sudo "$file"; then
+    if dos2unix_file "$file"; then
       converted=$((converted + 1))
     else
-      echo "Failed to convert: $file"
+      if [[ ! -w "$file" ]]; then
+        echo "Failed to convert (no write permission): $file"
+      else
+        echo "Failed to convert: $file"
+      fi
       failed=1
     fi
   done
@@ -155,10 +167,14 @@ convert_tree_eol() {
   local failed=0
 
   while IFS= read -r -d '' file; do
-    if dos2unix_maybe_sudo "$file"; then
+    if dos2unix_file "$file"; then
       converted=$((converted + 1))
     else
-      echo "Failed to convert: $file"
+      if [[ ! -w "$file" ]]; then
+        echo "Failed to convert (no write permission): $file"
+      else
+        echo "Failed to convert: $file"
+      fi
       failed=1
     fi
   done < <(find . \( -type d \( -name 'vendor' -o -name 'node_modules' -o \( -name '.*' ! -path '.' \) \) \) -prune -o -name "$pattern" -type f -print0)
