@@ -88,10 +88,7 @@ FUNCTION_BLOCK_CONTENT="$(cat <<'EOF'
 dos2unix_maybe_sudo() {
   local file="$1"
 
-  if [[ -w "$file" ]]; then
-    dos2unix "$file" >/dev/null 2>&1
-    return $?
-  fi
+  dos2unix "$file" >/dev/null 2>&1 && return 0
 
   command -v sudo >/dev/null 2>&1 || return 1
   sudo dos2unix "$file" >/dev/null 2>&1
