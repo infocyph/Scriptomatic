@@ -21,10 +21,12 @@ BASHRC="${HOME_DIR}/.bashrc"
 
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
 IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
-SOCK_DIR="/home/${USERNAME}/.run/php-fpm"
-DOMAINS_DIR="/usr/local/etc/php-fpm.domains/php$(
+PHP_PROFILE="php$(
   v=${PHP_VERSION//[^0-9.]/}; printf '%s%s' "${v%%.*}" "${v#*.}" | cut -d. -f1
 )"
+SOCK_DIR="/home/${USERNAME}/.run/php-fpm"
+DOMAINS_DIR="/usr/local/etc/php-fpm.domains/${PHP_PROFILE}"
+COMPOSER_HOME_VERSIONED="${HOME_DIR}/.composer/${PHP_PROFILE}"
 #####################################################################
 # Helper utilities
 #####################################################################
@@ -132,6 +134,24 @@ EOF
 }
 
 #####################################################################
+# 1d. Configure versioned Composer home (phpXX)
+#####################################################################
+configure_composer_home() {
+  echo "👉 Configuring Composer home (${COMPOSER_HOME_VERSIONED})…"
+  local profile_file="/etc/profile.d/composer-home.sh"
+
+  cat >"$profile_file" <<EOF
+#!/bin/sh
+export COMPOSER_HOME="${COMPOSER_HOME_VERSIONED}"
+EOF
+  chmod +x "$profile_file"
+
+  if [[ -f "$BASHRC" ]] && ! line_in_file "export COMPOSER_HOME=\"${COMPOSER_HOME_VERSIONED}\"" "$BASHRC"; then
+    printf '\nexport COMPOSER_HOME="%s"\n' "$COMPOSER_HOME_VERSIONED" >>"$BASHRC"
+  fi
+}
+
+#####################################################################
 # 2. Drop helper scripts
 #####################################################################
 install_helper_scripts() {
@@ -196,7 +216,7 @@ create_user() {
   # Create required dirs
   ( umask 022
     mkdir -p \
-      "${HOME_DIR}/.composer/vendor" \
+      "${COMPOSER_HOME_VERSIONED}/vendor" \
       /var/log/php-fpm \
       "$DOMAINS_DIR" \
       "$SOCK_DIR"
@@ -278,6 +298,7 @@ main() {
   configure_fpm_includes_and_dirs
   create_user
   configure_oh_my_bash
+  configure_composer_home
   add_banner_snippet
   run_alias_maker
 
