@@ -42,7 +42,7 @@ install_os_and_php() {
   apk update
   apk add --no-cache \
     curl git git-credential-libsecret bash shadow sudo dos2unix \
-    tzdata figlet ncurses musl-locales gawk ca-certificates msmtp \
+    tzdata figlet ncurses musl-locales gawk ca-certificates msmtp jq zip \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   if [[ ! -x /usr/local/bin/install-php-extensions ]]; then
