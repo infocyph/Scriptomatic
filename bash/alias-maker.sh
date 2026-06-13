@@ -36,9 +36,11 @@ touch "$BASHRC"
 
 ALIASES=(
   # Navigation and listing
-  'alias l="ls -CF"'
-  'alias la="ls -A"'
-  'alias ll="ls -alF"'
+  'alias l="lsd -l"'
+  'alias la="lsd -A"'
+  'alias lla="lsd -lA"'
+  'alias lt="lsd --tree"'
+  'alias ll="lsd -AlF"'
   'alias ..="cd .."'
   'alias ...="cd ../.."'
   'alias ....="cd ../../.."'

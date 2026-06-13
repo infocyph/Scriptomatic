@@ -40,7 +40,7 @@ install_os() {
   apk update
   apk add --no-cache \
     curl git git-credential-libsecret bash dos2unix shadow sudo tzdata \
-    figlet ncurses musl-locales gawk ca-certificates jq zip \
+    figlet ncurses musl-locales gawk ca-certificates jq zip lsd \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
   mkdir -p /usr/local/share/ca-certificates
