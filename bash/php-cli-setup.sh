@@ -41,7 +41,7 @@ install_os_and_php() {
   echo "👉 Installing base Alpine packages and PHP extensions…"
   apk update
   apk add --no-cache \
-    curl git git-credential-libsecret bash shadow sudo dos2unix \
+    curl git git-credential-libsecret bash shadow sudo dos2unix lsd \
     tzdata figlet ncurses musl-locales gawk ca-certificates msmtp jq zip \
     ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
 
