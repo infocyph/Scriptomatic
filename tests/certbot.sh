@@ -51,8 +51,8 @@ pass "certbot hook skips missing optional containers"
 : >"$work/docker-calls"
 MOCK_NGINX_STATE=running MOCK_APACHE_STATE=missing \
   bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-nginx.err"
-assert_contains "NGINX" "$(cat "$work/docker-calls")" "Nginx exact target"
-assert_not_contains "-it" "$(cat "$work/docker-calls")" "hook must not request a TTY"
+assert_contains "$(cat "$work/docker-calls")" "NGINX" "Nginx exact target"
+assert_not_contains "$(cat "$work/docker-calls")" "-it" "hook must not request a TTY"
 pass "certbot hook reloads an exact running target without TTY"
 
 set +e
@@ -76,8 +76,8 @@ pass "certbot hook propagates reload failures"
 CERTBOT_NGINX_CONTAINER=WEB_NGINX CERTBOT_APACHE_CONTAINER=WEB_APACHE \
 MOCK_NGINX_STATE=running MOCK_APACHE_STATE=running \
   bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-custom.err"
-assert_contains $'WEB_NGINX\tnginx -s reload' "$(cat "$work/docker-calls")" "custom Nginx target"
-assert_contains $'WEB_APACHE\tapachectl graceful' "$(cat "$work/docker-calls")" "custom Apache target"
+assert_contains "$(cat "$work/docker-calls")" $'WEB_NGINX\tnginx -s reload' "custom Nginx target"
+assert_contains "$(cat "$work/docker-calls")" $'WEB_APACHE\tapachectl graceful' "custom Apache target"
 pass "certbot hook supports LocalDevStack/container name overrides"
 
 cat >"$work/bin/certbot" <<'EOF_CERTBOT'
@@ -97,7 +97,7 @@ export MOCK_CERTBOT_CALLS="$work/certbot-calls"
 
 CERTBOT_BIN=certbot CERTBOT_DEPLOY_HOOK="$work/reload-services" CERTBOT_RENEW_ONCE=1 \
   bash "$ROOT/bash/certbot-renew.sh" >/dev/null 2>"$work/renew-once.err"
-assert_contains "renew --quiet --deploy-hook $work/reload-services" "$(cat "$work/certbot-calls")" "renew command contract"
+assert_contains "$(cat "$work/certbot-calls")" "renew --quiet --deploy-hook $work/reload-services" "renew command contract"
 pass "certbot renew supports deterministic one-cycle container execution"
 
 set +e
@@ -107,7 +107,7 @@ CERTBOT_RENEW_MAX_FAILURES=1 CERTBOT_RENEW_FAILURE_BACKOFF_SECONDS=1 \
 rc=$?
 set -e
 [[ $rc -ne 0 ]] || fail "renew failure threshold must terminate the foreground process"
-assert_contains "failure threshold reached" "$(cat "$work/renew-fail.err")" "failure threshold diagnostic"
+assert_contains "$(cat "$work/renew-fail.err")" "failure threshold reached" "failure threshold diagnostic"
 unset MOCK_CERTBOT_RC
 pass "certbot renew does not silently loop forever on repeated failure"
 
