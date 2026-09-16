@@ -54,9 +54,9 @@ export MOCK_MONGO_EVENTS="$work/events"
 printf 'uninitialized\n' >"$work/state"
 MONGO_READY_INTERVAL_SECONDS=1 MONGO_READY_TIMEOUT_SECONDS=2 MONGO_INIT_TIMEOUT_SECONDS=2 \
   bash "$ROOT/bash/mongo-replica.sh" >/dev/null 2>"$work/init.err"
-assert_contains "initiate" "$(cat "$work/events")" "uninitialized replica set must be initiated"
+assert_contains "$(cat "$work/events")" "initiate" "uninitialized replica set must be initiated"
 assert_eq matching "$(cat "$work/state")" "replica state after initialization"
-assert_contains "mongosh" "$(head -n1 "$work/calls")" "mongosh preferred when available"
+assert_contains "$(head -n1 "$work/calls")" "mongosh" "mongosh preferred when available"
 pass "mongo replica initializes an uninitialized Docker-DNS topology"
 
 : >"$work/events"
@@ -64,7 +64,7 @@ printf 'matching\n' >"$work/state"
 MONGO_READY_INTERVAL_SECONDS=1 MONGO_READY_TIMEOUT_SECONDS=2 MONGO_INIT_TIMEOUT_SECONDS=2 \
   bash "$ROOT/bash/mongo-replica.sh" >/dev/null 2>"$work/matching.err"
 assert_eq 0 "$(wc -l <"$work/events" | tr -d ' ')" "matching topology must not be re-initiated"
-assert_contains "already matches" "$(cat "$work/matching.err")" "idempotent topology diagnostic"
+assert_contains "$(cat "$work/matching.err")" "already matches" "idempotent topology diagnostic"
 pass "mongo replica is idempotent when topology already matches"
 
 printf 'conflict\n' >"$work/state"
@@ -74,7 +74,7 @@ MONGO_READY_INTERVAL_SECONDS=1 MONGO_READY_TIMEOUT_SECONDS=2 MONGO_INIT_TIMEOUT_
 rc=$?
 set -e
 [[ $rc -ne 0 ]] || fail "conflicting replica topology must fail"
-assert_contains "conflicts" "$(cat "$work/conflict.err")" "conflicting topology diagnostic"
+assert_contains "$(cat "$work/conflict.err")" "conflicts" "conflicting topology diagnostic"
 pass "mongo replica refuses conflicting existing topology"
 
 set +e
