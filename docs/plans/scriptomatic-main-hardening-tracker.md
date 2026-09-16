@@ -18,6 +18,12 @@ Baseline:
 main @ 261397d3271cda5a6c186a64f8239bd3205fcf93
 ```
 
+Draft PR:
+
+```text
+#58 — Scriptomatic main-branch hardening
+```
+
 ## Governing Constraints
 
 - [x] No Scriptomatic tag/release lifecycle is required.
@@ -34,7 +40,7 @@ main @ 261397d3271cda5a6c186a64f8239bd3205fcf93
 |---|---|---|
 | Batch 1 | 1–3 | **Complete** |
 | Batch 2 | 4–6 | **Complete** |
-| Batch 3 | 7–9 | Pending |
+| Batch 3 | 7–9 | **Complete** |
 
 ---
 
@@ -48,8 +54,6 @@ Status: **Complete**
 - [x] Bash/POSIX syntax validation, executable-mode validation and ShellCheck error gate added.
 - [x] Permanent GitHub Actions jobs added using `actions/checkout@v7`.
 - [x] PHP, Node, entrypoint, utility/server baseline, security and aggregate CI gate established.
-
-Validated in Batch 1 CI.
 
 ---
 
@@ -108,28 +112,15 @@ bash/node-cli-setup.sh
 
 Status: **Complete**
 
-Target:
-
-```text
-bash/node-entry.sh
-```
-
-- [x] Expanded `tests/node-entry.sh` beyond the Batch 1 forwarding baseline.
-- [x] Direct command argv forwarding and exit-code propagation tested.
-- [x] File-log behavior/default paths exercised.
-- [x] Existing dependency auto-install and package-manager selection order preserved.
-- [x] Existing pnpm/yarn/npm lockfile fallback contract retained.
-- [x] Framework detection and framework-specific final `exec` paths retained.
-- [x] Generic `dev` host/port attempt → plain `dev` fallback order retained.
-- [x] Removed accidental duplicate execution of a successful generic `dev` command.
-- [x] Generic trial path now forwards shutdown signals to its child.
-- [x] Direct-command signal forwarding verified.
-- [x] `NODE_CMD` remains a trusted shell-expression override.
+- [x] Direct command argv forwarding, exit codes and signal behavior covered.
+- [x] File-log behavior/defaults covered.
+- [x] Existing dependency-install/package-manager/lockfile fallback semantics preserved.
+- [x] Framework-specific final `exec` behavior preserved.
+- [x] Generic `dev` fallback no longer launches a successful command twice.
+- [x] Generic trial child receives shutdown signals.
+- [x] `NODE_CMD` remains the documented trusted shell-expression override.
 - [x] `NODE_KEEPALIVE_ON_FAIL=1` remains the default.
-- [x] npm install flags are now argv-safe rather than word-split strings.
-- [x] Log-path creation reports failures clearly.
-- [x] npm cache ownership handling avoids unnecessary privileged mutation.
-- [x] Root-CA bootstrap no longer relies on a predictable `/tmp` stamp and is content-aware/idempotent.
+- [x] npm flags made argv-safe and root-CA handling made content-aware.
 
 ---
 
@@ -137,33 +128,13 @@ bash/node-entry.sh
 
 Status: **Complete**
 
-Targets:
-
-```text
-bash/alias-maker.sh
-bash/banner.sh
-bash/docknotify.sh
-bash/owners.sh
-```
-
-- [x] Dedicated fixtures added for all four utilities.
-- [x] Existing aliases and managed utility-function block preserved.
-- [x] `.bashrc` managed-block replacement made same-directory/atomic and mode-aware.
-- [x] Repeated alias-maker execution verified idempotent.
-- [x] `dos2unix` handling keeps filenames with spaces/shell-sensitive characters intact.
-- [x] Merged-branch iteration uses structured branch output instead of presentation parsing.
-- [x] Banner retains INFOCYPH/description presentation when dependencies work.
-- [x] Banner degrades to plain output if figlet fails or presentation dependencies are unavailable.
-- [x] Non-TTY/`NO_COLOR` output avoids making ChromaCat presentation runtime-critical.
-- [x] Docknotify CLI/env/default best-effort semantics preserved.
-- [x] Docknotify protocol fields sanitize tabs/newlines/carriage returns, including the token.
-- [x] Docknotify now emits the intended newline-terminated wire frame.
-- [x] Docknotify validates host/port safely without treating host data as command syntax.
-- [x] Strict-mode send failure remains non-zero; best-effort mode remains nonfatal.
-- [x] Token leakage is regression-tested.
-- [x] `owners.sh` now uses NUL-safe tracked-file iteration.
-- [x] `owners.sh` validates Git and git-fame dependencies.
-- [x] Filenames containing spaces and shell-sensitive characters are regression-tested.
+- [x] Dedicated fixtures cover alias-maker, banner, docknotify and owners.
+- [x] `.bashrc` managed-block replacement is idempotent, same-directory/atomic and mode-aware.
+- [x] Banner retains full presentation when dependencies are usable and degrades safely otherwise.
+- [x] Docknotify preserves best-effort defaults and strict mode while sending a real newline-terminated frame.
+- [x] Docknotify sanitizes all protocol fields, including the token, without leaking token diagnostics.
+- [x] `owners.sh` uses NUL-safe tracked-file iteration and validates dependencies.
+- [x] Spaces and shell-sensitive filenames are regression-tested.
 
 ---
 
@@ -171,112 +142,129 @@ bash/owners.sh
 
 Status: **Complete**
 
-Targets:
-
-```text
-bash/certbot-hook.sh
-bash/certbot-renew.sh
-bash/mongo-replica.sh
-```
-
 - [x] Dedicated Certbot and Mongo fixtures added and wired into permanent CI.
 - [x] Default `NGINX` / `APACHE` names and reload commands preserved.
-- [x] Running-container detection now checks exact container state rather than relying on redirected `docker ps` output.
+- [x] Exact running-container detection replaces redirected `docker ps` assumptions.
 - [x] Certbot hook no longer allocates an interactive TTY.
-- [x] Reload failures return meaningful non-zero status while absent containers are skipped cleanly.
-- [x] 12-hour renewal cadence remains the default through `CERTBOT_RENEW_INTERVAL`.
-- [x] `/usr/local/bin/reload-services` remains the default deploy hook.
-- [x] Certbot dependency/hook preflight and stop-signal handling added.
-- [x] Renewal failure diagnostics improved without changing the recurring retry model.
-- [x] `rs0` and the three existing default member hostnames/ports preserved.
-- [x] Fixed startup sleep replaced with bounded readiness probing.
-- [x] `mongosh` is preferred when available with transparent legacy `mongo` fallback.
-- [x] Matching replica topology is idempotent.
-- [x] Conflicting existing topology fails clearly instead of blindly reinitializing.
-- [x] Uninitialized topology executes the existing `rs.initiate` intent.
+- [x] Default 12-hour renewal cadence and deploy hook remain unchanged.
+- [x] Renewal loop gains dependency preflight, diagnostics and stop-signal handling.
+- [x] Mongo defaults remain `rs0` with the existing three members.
+- [x] Fixed startup sleep replaced by bounded readiness probing.
+- [x] `mongosh` preferred with legacy `mongo` fallback.
+- [x] Matching topology is idempotent and conflicting topology fails clearly.
 
 ---
 
 # Phase 7 — Full Security & Reliability Audit
 
-Status: **Pending**
+Status: **Complete**
 
-- [ ] Rescan all remote execution/network calls.
-- [ ] Rescan command-construction injection risk.
-- [ ] Rescan writable config sourcing/temp paths/broad deletion.
-- [ ] Rescan executable ownership and root/sudo transitions.
-- [ ] Rescan Git/path iteration and automation TTY usage.
-- [ ] Rescan secret/token leakage.
-- [ ] Explicitly allow policy-approved Scriptomatic/Toolset `/main/` consumption.
-- [ ] Record behavior-changing findings as deferred decisions rather than silently changing them.
+- [x] Rescanned all shipped scripts for remote execution/network calls.
+- [x] Rescanned command-construction injection risk.
+- [x] Rescanned temporary paths, broad deletion and writable configuration execution.
+- [x] Rescanned shared executable ownership and root/sudo transitions.
+- [x] Rescanned Git/path iteration and Docker automation TTY use.
+- [x] Rescanned secret/token leakage.
+- [x] Expanded `tests/security-audit.sh` with permanent regression checks.
+- [x] Explicitly preserved policy-approved Scriptomatic `main` and Toolset `main` consumption.
+- [x] Added Mongo replica-set/member override validation before JavaScript interpolation.
+- [x] Mongo now treats only actual `NotYetInitialized` state as initialization permission; unrelated inspection/auth failures fail safely.
+- [x] Added regression coverage for invalid Mongo overrides and non-initialization errors.
+- [x] Existing mutable upstream policies documented rather than silently redesigned.
 
 ---
 
 # Phase 8 — Documentation & Downstream Compatibility
 
-Status: **Pending**
+Status: **Complete**
 
-- [ ] Reconcile README/contracts/security docs with final implementation.
-- [ ] Ensure canonical Scriptomatic URLs use `main`, not stale `master`.
-- [ ] Test direct-main installation contract.
-- [ ] Keep optional SHA pinning documented, not mandatory.
-- [ ] Cross-check LocalDevStack-relevant behavior.
-- [ ] Confirm no Toolset CLI functionality has been duplicated.
+- [x] README reconciled with the final implementation and complete test surface.
+- [x] `docs/script-contracts.md` reconciled through Phases 4–7.
+- [x] `docs/security-review.md` reconciled with accepted mutable sources and final trust boundaries.
+- [x] Added `docs/downstream-compatibility.md`.
+- [x] Added permanent `tests/main-contract.sh` for canonical `main` distribution.
+- [x] CI now rejects stale canonical `master` self-references, release/publish workflows and tag-triggered release behavior.
+- [x] Optional full-SHA pinning remains documented but is not mandatory.
+- [x] LocalDevStack compatibility was cross-checked without modifying the downstream repository.
+- [x] LocalDevStack follow-up recorded: change its Scriptomatic PHP/Node raw branch component from `master` to `main` after this PR merges.
+- [x] PHP/Node setup invocation, environment inputs, entrypoint paths and helper names remain compatible.
+- [x] Confirmed Scriptomatic consumes rather than duplicates Toolset CLI functionality.
 
 ---
 
 # Phase 9 — Final Gate & Cleanup
 
-Status: **Pending**
+Status: **Complete**
 
-- [ ] Run complete static/PHP/Node/entrypoint/utility/server/security suite.
-- [ ] Aggregate CI gate green on final clean head.
-- [ ] Remove any temporary migration/apply helpers or workflows.
-- [ ] Keep permanent CI/tests/docs.
-- [ ] Verify no generated/accidental artifacts remain.
-- [ ] Verify no release/tag workflow exists.
-- [ ] Verify direct `main` consumption remains the intended post-merge model.
-- [ ] Final code/documentation rescan.
+- [x] Complete static/PHP/Node/entrypoint/utility/server/security suite green on Batch 3 implementation head.
+- [x] Push CI aggregate gate green on Batch 3 implementation head.
+- [x] PR-triggered CI aggregate gate green on Batch 3 implementation head.
+- [x] No temporary migration/apply helper or workflow exists.
+- [x] Permanent CI/tests/docs retained.
+- [x] Branch delta reviewed for accidental/generated artifacts.
+- [x] `.github/workflows` contains only permanent `ci.yml`.
+- [x] No release/publish workflow exists.
+- [x] No tag-triggered distribution workflow exists.
+- [x] Direct `main` consumption remains the intended post-merge model.
+- [x] Plan remains consistent with the no-tag/no-release requirement.
+- [x] Final code/documentation rescan completed.
 
 ---
 
 # Deferred Decisions
 
-| ID | Area | Finding | Compatibility impact | Decision |
-|---|---|---|---|---|
-| — | — | None currently requiring a behavior-changing decision | — | — |
+No behavior-changing decision is required to complete this hardening program.
+
+The following established mutable-development policies remain intentionally unchanged and documented:
+
+- Scriptomatic `main` distribution;
+- Toolset `main` consumption;
+- current Oh My Bash upstream policy;
+- PHP extension installer `releases/latest` policy;
+- Composer self-update behavior;
+- npm update/fallback behavior;
+- passwordless sudo in the existing development-container contract;
+- Node keepalive default.
 
 ---
 
-# Batch 1 Validation Record
+# Downstream Follow-up
+
+LocalDevStack's current default branch still references historical Scriptomatic `master` raw URLs in its PHP and Node Dockerfiles. After PR #58 merges, update those two branch components to `main`. No Scriptomatic tag/release migration is required.
+
+This downstream repository was intentionally not modified from the Scriptomatic hardening branch.
+
+---
+
+# Validation Records
+
+## Batch 1
 
 CI run: **205**  
 Implementation head: `560abc687da94f771fe27d8fbe1c05ec498092ac`  
 Result: **success**
 
-Green jobs included static/smoke, PHP/Node integration, entrypoint/server baselines, security audit and aggregate gate.
+## Batch 2
 
-# Batch 2 Validation Record
-
-CI run: **220**  
+Push CI run: **220**  
 Implementation head: `d8fc9879be29220a7c8cb793b3a40c2e56283b8f`  
 Result: **success**
 
-Green jobs:
+PR #58 CI run: **222**  
+Tracker head: `664941eeca5a3a818f5eae86cc80ae95940898cd`  
+Result: **success**
 
-- Static and shell validation
-- Utility smoke
-- Shared utility regression
-- PHP bootstrap integration
-- Node bootstrap integration
-- Entrypoint integration
-- Server helper integration
-- Security and hardening audit
-- CI gate
+## Batch 3
 
-Next execution point:
+Implementation head:
 
 ```text
-Batch 3 — Phases 7–9
-Phase 7 — Full Security & Reliability Audit
+c137b5e87d57a4a985745b6720abfba7340356b9
 ```
+
+Push CI run: **239** — **success**  
+PR #58 CI run: **240** — **success**
+
+Both runs include the expanded security audit, main-distribution contract and aggregate CI gate.
+
+This tracker completion commit is documentation-only; its resulting push/PR checks are the final clean-head validation before merge readiness.
