@@ -22,8 +22,8 @@ assert_eq 7 "$status" 'node-entry direct command exit status changed'
 log_dir="$tmp/logs"
 APP_DIR="$tmp/app" NODE_LOG_ENABLED=1 NODE_LOG_DIR="$log_dir" ROOTCA_PATH="$tmp/missing.pem" \
   "$ROOT/bash/node-entry.sh" sh -c 'printf out; printf err >&2'
-assert_file_contains "$log_dir/access.log" 'out' 'node-entry access log missing command stdout'
-assert_file_contains "$log_dir/error.log" 'err' 'node-entry error log missing command stderr'
+assert_contains "$log_dir/access.log" 'out'
+assert_contains "$log_dir/error.log" 'err'
 
 mkdir -p "$tmp/fakebin" "$tmp/generic/node_modules"
 printf '{"scripts":{"dev":"fake-dev"}}\n' >"$tmp/generic/package.json"
@@ -61,7 +61,7 @@ pid=$!
 sleep 0.2
 kill -TERM "$pid"
 wait "$pid"
-assert_file_contains "$signal_marker" 'term' 'direct command did not receive TERM after exec forwarding'
+assert_contains "$signal_marker" 'term'
 
 set +e
 APP_DIR="$tmp/app" NODE_LOG_ENABLED=0 NODE_KEEPALIVE_ON_FAIL=0 ROOTCA_PATH="$tmp/missing.pem" \
