@@ -12,13 +12,13 @@ source "$ROOT/tests/lib/assert.sh"
   validate_version 24.1.0
   validate_id UID 1000
   validate_id GID 1000
+  parsed=()
   parse_csv 'typescript@5.9,@nestjs/cli@11' NODE_GLOBAL parsed
   assert_eq 2 "${#parsed[@]}" 'Node CSV parser count'
   assert_eq 'typescript@5.9' "${parsed[0]}" 'Node CSV parser first token'
   if validate_token NODE_GLOBAL 'pkg;id' >/dev/null 2>&1; then
     fail 'Node package shell syntax was accepted'
   fi
-  NODE_LOG_DIR=/var/log/node-app
   validate_inputs
   assert_eq 'https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash' "$SCRIPTOMATIC_BASE_URL" 'Node sibling source must use main'
 )
@@ -43,6 +43,20 @@ if [[ "${SCRIPTOMATIC_FULL_INTEGRATION:-0}" == 1 ]]; then
     grep -Fq "NPM_CONFIG_PREFIX" /home/dev/.bashrc
     grep -Fq "GIT_CONFIG_GLOBAL" /home/dev/.bashrc
     test ! -e /tmp/cli-setup.sh
+
+    # Exercise the separate fresh-account branch without repeating package and
+    # network bootstrap. The first full setup already installed its required
+    # user-management tools and helper destinations.
+    env UID=1001 GID=1001 bash -ceu '\''
+      set -- freshdev 24
+      source /repo/bash/node-cli-setup.sh
+      create_user
+      test "$(id -u freshdev)" = 1001
+      test "$(id -g freshdev)" = 1001
+      test "$(getent passwd freshdev | cut -d: -f6)" = /home/freshdev
+      test "$(getent passwd freshdev | cut -d: -f7)" = /bin/bash
+      sudo -n -u freshdev true
+    '\''
   '
 fi
 
