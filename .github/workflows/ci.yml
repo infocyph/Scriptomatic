@@ -85,7 +85,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: bash tests/security-audit.sh
+      - run: |
+          bash tests/security-audit.sh
+          bash tests/main-contract.sh
 
   gate:
     name: CI gate
