@@ -21,7 +21,31 @@ source "$ROOT/tests/lib/assert.sh"
   if validate_token PHP_EXT 'xdebug;touch/tmp/pwn' >/dev/null 2>&1; then
     fail 'PHP extension shell syntax was accepted'
   fi
-  assert_eq 'https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash' "$SCRIPTOMATIC_BASE_URL" 'PHP sibling source must use main'
+  assert_eq main "$SCRIPTOMATIC_REF" 'PHP Scriptomatic ref default'
+  assert_eq 2.0 "$TOOLSET_REF" 'PHP Toolset ref default'
+  assert_eq 'https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash' "$SCRIPTOMATIC_BASE_URL" 'PHP sibling source default'
+  assert_eq 'https://github.com/infocyph/Toolset/releases/download/2.0' "$TOOLSET_RELEASE_BASE_URL" 'PHP Toolset release source'
+)
+
+(
+  export SCRIPTOMATIC_REF=0123456789abcdef0123456789abcdef01234567
+  export TOOLSET_REF=2.0
+  set -- dev 8.4
+  # shellcheck source=/dev/null
+  source "$ROOT/bash/php-cli-setup.sh"
+  validate_dependency_refs
+  assert_eq 'https://raw.githubusercontent.com/infocyph/Scriptomatic/0123456789abcdef0123456789abcdef01234567/bash' \
+    "$SCRIPTOMATIC_BASE_URL" 'PHP pinned sibling source'
+)
+
+(
+  export SCRIPTOMATIC_REF=feature-branch
+  set -- dev 8.4
+  # shellcheck source=/dev/null
+  source "$ROOT/bash/php-cli-setup.sh"
+  if validate_dependency_refs >/dev/null 2>&1; then
+    fail 'PHP accepted a non-main non-SHA Scriptomatic ref'
+  fi
 )
 
 if [[ "${SCRIPTOMATIC_FULL_INTEGRATION:-0}" == 1 ]]; then
@@ -30,7 +54,7 @@ if [[ "${SCRIPTOMATIC_FULL_INTEGRATION:-0}" == 1 ]]; then
     apk add --no-cache bash >/dev/null
     cp /repo/bash/php-cli-setup.sh /tmp/cli-setup.sh
     chmod +x /tmp/cli-setup.sh
-    env UID=1000 GID=1000 /tmp/cli-setup.sh dev 8.4
+    env UID=1000 GID=1000 SCRIPTOMATIC_REF=main TOOLSET_REF=2.0 /tmp/cli-setup.sh dev 8.4
     test "$(id -u dev)" = 1000
     test "$(id -g dev)" = 1000
     sudo -n -u dev true
@@ -48,4 +72,4 @@ if [[ "${SCRIPTOMATIC_FULL_INTEGRATION:-0}" == 1 ]]; then
   '
 fi
 
-pass 'PHP bootstrap hardening contract'
+pass 'PHP bootstrap hardening and dependency contract'

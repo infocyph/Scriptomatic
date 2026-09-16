@@ -12,9 +12,11 @@ Canonical raw form:
 https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/<script>.sh
 ```
 
-Consumers that need reproducible builds may pin a full commit SHA in the same URL shape, but Scriptomatic itself continues to support direct consumption from `main`.
+Consumers that need reproducible builds may pin a full commit SHA in the same URL shape. PHP/Node bootstrap also accepts `SCRIPTOMATIC_REF=main` (default) or the same full commit SHA so every sibling Scriptomatic helper is fetched from the identical source revision.
 
-The permanent CI suite verifies this contract and rejects stale Scriptomatic `master` self-references, tag/release workflows, and tag-triggered publishing behavior.
+Toolset is a released dependency rather than a mutable branch dependency. PHP/Node bootstrap defaults to `TOOLSET_REF=2.0`, downloads the required standalone Toolset assets from that exact GitHub Release, and verifies them against the release `SHA256SUMS` before installation.
+
+The permanent CI suite verifies this contract and rejects stale Scriptomatic `master` self-references, mutable Toolset `main` consumption, tag/release workflows for Scriptomatic, and tag-triggered Scriptomatic publishing behavior.
 
 ## Script surface
 
@@ -40,8 +42,10 @@ Detailed contracts and dependencies are documented in [`docs/script-contracts.md
 curl -fsSLo /usr/local/bin/cli-setup.sh \
   https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/php-cli-setup.sh
 chmod +x /usr/local/bin/cli-setup.sh
-/usr/local/bin/cli-setup.sh dev 8.4
+SCRIPTOMATIC_REF=main TOOLSET_REF=2.0 /usr/local/bin/cli-setup.sh dev 8.4
 ```
+
+For a reproducible Scriptomatic build, replace `main` in the download URL with a full commit SHA and pass that same SHA through `SCRIPTOMATIC_REF`.
 
 The script is intentionally designed for Alpine-based official-style PHP images. It preserves the existing package/extension inputs:
 
@@ -58,8 +62,10 @@ It also installs the existing developer helpers (`gitx`, `chromacat`, `show-bann
 curl -fsSLo /usr/local/bin/cli-setup.sh \
   https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/node-cli-setup.sh
 chmod +x /usr/local/bin/cli-setup.sh
-/usr/local/bin/cli-setup.sh dev 24
+SCRIPTOMATIC_REF=main TOOLSET_REF=2.0 /usr/local/bin/cli-setup.sh dev 24
 ```
+
+For a reproducible Scriptomatic build, replace `main` in the download URL with a full commit SHA and pass that same SHA through `SCRIPTOMATIC_REF`.
 
 The script is intentionally designed for Alpine-based official-style Node images. Existing inputs remain supported:
 
@@ -69,6 +75,10 @@ The script is intentionally designed for Alpine-based official-style Node images
 - `NODE_LOG_DIR`
 
 The upstream `node` user/UID reuse behavior, passwordless sudo, Corepack best-effort enablement, npm update fallback, user npm prefix/cache, helper installation, and shell setup remain part of the compatibility contract.
+
+## Server helper contracts
+
+`certbot-renew.sh` keeps the established fixed 12-hour renewal interval and `/usr/local/bin/reload-services` deploy hook. `mongo-replica.sh` keeps the established `rs0` topology with `mongo-primary:27017`, `mongo-secondary1:27017`, and `mongo-secondary2:27017`. Their hardening improves readiness, shutdown, idempotency, conflict handling, and diagnostics without turning those established defaults into a new configuration surface.
 
 ## Testing
 
