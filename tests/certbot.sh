@@ -33,13 +33,20 @@ status=$?
 set -e
 assert_eq 1 "$status" 'certbot hook must report reload failure'
 
-hook="$tmp/reload-services"; printf '#!/usr/bin/env bash\nexit 0\n' >"$hook"; chmod +x "$hook"
 cat >"$tmp/fake/certbot" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$CERTBOT_LOG"
 exit 0
 EOF
-chmod +x "$tmp/fake/certbot"
-CERTBOT_LOG="$tmp/certbot.log" CERTBOT_DEPLOY_HOOK="$hook" CERTBOT_RENEW_ONCE=1 PATH="$tmp/fake:$PATH" "$ROOT/bash/certbot-renew.sh"
-assert_contains "$tmp/certbot.log" "renew --quiet --deploy-hook $hook"
-pass 'certbot reload and renew contracts'
+cat >"$tmp/fake/sleep" <<'EOF'
+#!/usr/bin/env bash
+kill -TERM "$PPID"
+exit 0
+EOF
+chmod +x "$tmp/fake/certbot" "$tmp/fake/sleep"
+
+CERTBOT_LOG="$tmp/certbot.log" PATH="$tmp/fake:$PATH" "$ROOT/bash/certbot-renew.sh" >/dev/null
+assert_contains "$tmp/certbot.log" 'renew --quiet --deploy-hook /usr/local/bin/reload-services'
+assert_eq 1 "$(wc -l <"$tmp/certbot.log" | tr -d ' ')" 'certbot renewal should run once before test shutdown'
+
+pass 'certbot reload and fixed renew contracts'
