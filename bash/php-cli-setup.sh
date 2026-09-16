@@ -237,7 +237,7 @@ configure_fpm_includes_and_dirs() {
   if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.d/\*\.conf[[:space:]]*$' "$fpm_conf"; then
     printf '\n; Default pool include\ninclude=/usr/local/etc/php-fpm.d/*.conf\n' >> "$fpm_conf"
   fi
-  if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.domains/\*\.conf[[:space:]]*$' "$fpm_conf"; then
+  if ! grep -qF -- "include=${DOMAINS_DIR}/*.conf" "$fpm_conf"; then
     printf '\n; Extra pool dir mounted from host\ninclude=%s/*.conf\n' "$DOMAINS_DIR" >> "$fpm_conf"
   fi
 }
