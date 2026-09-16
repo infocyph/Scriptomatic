@@ -2,8 +2,24 @@ from pathlib import Path
 
 path = Path('.github/scripts/scope-preservation-final.py')
 text = path.read_text()
+
 old = 'out, count = re.subn(pattern, repl, text, count=1, flags=re.S)'
 new = 'out, count = re.subn(pattern, lambda _match: repl, text, count=1, flags=re.S)'
-if old not in text:
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
     raise SystemExit('expected sub1 implementation not found')
-path.write_text(text.replace(old, new, 1))
+
+needle = 'node_entry = node_entry.replace(\'"$ROOTCA_DEST"\', \'"/usr/local/share/ca-certificates/rootCA.crt"\')\n'
+insert = needle + 'node_entry = node_entry.replace("$ROOTCA_DEST", "/usr/local/share/ca-certificates/rootCA.crt")\n'
+if needle in text and insert not in text:
+    text = text.replace(needle, insert, 1)
+
+needle = 'php_entry = php_entry.replace(\'"$ROOTCA_DEST"\', \'"/usr/local/share/ca-certificates/rootCA.crt"\')\n'
+insert = needle + 'php_entry = php_entry.replace("$ROOTCA_DEST", "/usr/local/share/ca-certificates/rootCA.crt")\n'
+if needle in text and insert not in text:
+    text = text.replace(needle, insert, 1)
+
+text = text.replace('        "MONGO_MEMBERS", "MONGO_SHELL=",\n', '        "MONGO_MEMBERS",\n')
+
+path.write_text(text)
