@@ -1,16 +1,26 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-if ! test -d "./.git"; then
+command -v git >/dev/null 2>&1 || {
+  echo "Error: git is not installed!" >&2
+  exit 127
+}
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "Error: Not a git repository!" >&2
   exit 1
+}
+
+if ! git fame --help >/dev/null 2>&1; then
+  echo "Error: git-fame is not installed!" >&2
+  exit 127
 fi
 
-# git fame owner generator
-for f in $(git ls-files); do
-  # filename
-  echo -n "$f "
-  # author emails if loc distribution >= 30%
-  git fame -esnwMC --incl "$f" | tr '/' '|' \
+while IFS= read -r -d '' file; do
+  printf '%s ' "$file"
+  git fame -esnwMC --incl "$file" \
+    | tr '/' '|' \
     | awk -F '|' '(NR>6 && $6>=30) {print $2}' \
-    | xargs echo
-done
+    | paste -sd ' ' -
+  printf '\n'
+done < <(git ls-files -z)
