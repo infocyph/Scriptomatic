@@ -2,15 +2,15 @@
 set -eu
 
 APP_DIR="${APP_DIR:-/app}"
-: "${NODE_LOG_ENABLED:=0}"
+: "${NODE_LOG_ENABLED:=1}"
 : "${NODE_LOG_DIR:=/var/log/node-app}"
 : "${NODE_ACCESS_LOG_FILE:=access.log}"
 : "${NODE_ERROR_LOG_FILE:=error.log}"
 : "${NODE_ACCESS_LOG:=${NODE_LOG_DIR}/${NODE_ACCESS_LOG_FILE}}"
 : "${NODE_ERROR_LOG:=${NODE_LOG_DIR}/${NODE_ERROR_LOG_FILE}}"
-: "${NODE_KEEPALIVE_ON_FAIL:=0}"
-: "${NODE_AUTO_INSTALL:=0}"
-: "${NODE_ALLOW_LOCKFILE_FALLBACK:=0}"
+: "${NODE_KEEPALIVE_ON_FAIL:=1}"
+: "${NODE_AUTO_INSTALL:=1}"
+: "${NODE_ALLOW_LOCKFILE_FALLBACK:=1}"
 : "${HOST:=0.0.0.0}"
 : "${PORT:=3000}"
 : "${NPM_AUDIT:=0}"
@@ -80,6 +80,10 @@ run_privileged() {
 install_root_ca_if_changed() {
   [ -r "$ROOTCA_PATH" ] || return 0
 
+  # Preserve the original useful behavior: Node can trust the mounted CA even
+  # when system trust-store installation is unavailable/best-effort.
+  export NODE_EXTRA_CA_CERTS="$ROOTCA_PATH"
+
   src_hash="$(sha256_file "$ROOTCA_PATH" 2>/dev/null || true)"
   [ -n "$src_hash" ] || {
     warn "cannot hash ROOTCA; sha256sum or openssl is required"
@@ -89,10 +93,7 @@ install_root_ca_if_changed() {
 
   dst_hash=""
   [ ! -r "$ROOTCA_DEST" ] || dst_hash="$(sha256_file "$ROOTCA_DEST" 2>/dev/null || true)"
-  [ "$src_hash" != "$dst_hash" ] || {
-    export NODE_EXTRA_CA_CERTS="$ROOTCA_PATH"
-    return 0
-  }
+  [ "$src_hash" != "$dst_hash" ] || return 0
 
   if ! run_privileged install -m 0644 "$ROOTCA_PATH" "$ROOTCA_DEST"; then
     warn "unable to install ROOTCA at $ROOTCA_DEST"
@@ -104,7 +105,6 @@ install_root_ca_if_changed() {
     warn "update-ca-certificates failed"
     [ "$ROOTCA_REQUIRED" = 1 ] && return 1
   fi
-  export NODE_EXTRA_CA_CERTS="$ROOTCA_PATH"
 }
 
 ensure_log_paths() {
@@ -123,6 +123,15 @@ run_cmd() {
     ' sh "$NODE_ACCESS_LOG" "$NODE_ERROR_LOG" "$@"
   fi
   exec "$@"
+}
+
+try_cmd() {
+  if [ "$NODE_LOG_ENABLED" = 1 ]; then
+    ensure_log_paths
+    "$@" >>"$NODE_ACCESS_LOG" 2>>"$NODE_ERROR_LOG"
+  else
+    "$@"
+  fi
 }
 
 has_script() {
@@ -153,20 +162,12 @@ npm_install_flags() {
   printf '%s' "$flags"
 }
 
-run_with_optional_fallback() {
-  if "$@"; then
-    return 0
-  fi
-  [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
-  return 2
-}
-
 install_deps() {
   [ "$NODE_AUTO_INSTALL" = 1 ] || return 0
   [ -f package.json ] || return 0
   [ -d node_modules ] && return 0
 
-  warn "node_modules not found; NODE_AUTO_INSTALL=1 permits dependency installation"
+  warn "node_modules not found, installing dependencies..."
 
   if [ -f pnpm-lock.yaml ]; then
     has_cmd pnpm || {
@@ -175,7 +176,7 @@ install_deps() {
     }
     if pnpm install --frozen-lockfile; then return 0; fi
     [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
-    warn "strict pnpm install failed; explicit fallback enabled"
+    warn "strict pnpm install failed; trying compatibility fallback"
     pnpm install
     return
   fi
@@ -187,17 +188,17 @@ install_deps() {
     }
     if yarn install --frozen-lockfile; then return 0; fi
     [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
-    warn "strict yarn install failed; explicit fallback enabled"
+    warn "strict yarn install failed; trying compatibility fallback"
     yarn install
     return
   fi
 
   flags="$(npm_install_flags)"
   if [ -f package-lock.json ]; then
-    # shellcheck disable=SC2086 # flags are internally constructed fixed npm options.
+    # shellcheck disable=SC2086 # internally constructed fixed npm flags.
     if npm ci $flags; then return 0; fi
     [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
-    warn "npm ci failed; explicit fallback enabled"
+    warn "npm ci failed; trying compatibility fallback"
     # shellcheck disable=SC2086
     npm install $flags
     return
@@ -207,34 +208,41 @@ install_deps() {
   npm install $flags
 }
 
-select_and_run_app() {
-  if [ -n "${NODE_CMD:-}" ]; then
-    warn "executing trusted NODE_CMD shell expression"
-    run_cmd sh -lc "$NODE_CMD"
-  fi
+run_dev() {
+  has_script dev || return 1
 
-  if has_script dev; then
-    framework="$(detect_framework)"
-    case "$framework" in
-      next) run_cmd env HOSTNAME="$HOST" npm run dev -- --hostname "$HOST" --port "$PORT" ;;
-      nuxt) run_cmd env NUXT_HOST="$HOST" NUXT_PORT="$PORT" npm run dev -- --host "$HOST" --port "$PORT" ;;
-      vite) run_cmd npm run dev -- --host "$HOST" --port "$PORT" ;;
-      nest|generic) run_cmd npm run dev ;;
-    esac
-  fi
+  framework="$(detect_framework)"
+  case "$framework" in
+    next)
+      run_cmd env HOSTNAME="$HOST" npm run dev -- --hostname "$HOST" --port "$PORT"
+      ;;
+    nuxt)
+      run_cmd env NUXT_HOST="$HOST" NUXT_PORT="$PORT" npm run dev -- --host "$HOST" --port "$PORT"
+      ;;
+    vite)
+      run_cmd npm run dev -- --host "$HOST" --port "$PORT"
+      ;;
+    nest)
+      run_cmd npm run dev
+      ;;
+    generic)
+      # Preserve the old two-form fallback intent, but do not execute a
+      # successful dev command a second time.
+      if try_cmd npm run dev -- --host "$HOST" --port "$PORT"; then
+        return 0
+      fi
+      if try_cmd npm run dev; then
+        return 0
+      fi
+      warn "dev script failed; trying fallbacks"
+      return 1
+      ;;
+  esac
+}
 
-  if has_script start; then
-    run_cmd npm start
-  fi
-  [ ! -f server.js ] || run_cmd node server.js
-  [ ! -f index.js ] || run_cmd node index.js
-
-  warn "no runnable app found (checked NODE_CMD, dev/start scripts, server.js, index.js)"
-  if [ "$NODE_KEEPALIVE_ON_FAIL" = 1 ]; then
-    warn "NODE_KEEPALIVE_ON_FAIL=1; keeping container alive without an app"
-    while :; do sleep 3600; done
-  fi
-  return 1
+run_start() {
+  has_script start || return 1
+  run_cmd npm start
 }
 
 install_root_ca_if_changed
@@ -243,8 +251,33 @@ if [ "$#" -gt 0 ]; then
   run_cmd "$@"
 fi
 
-install_deps || {
-  warn "dependency installation failed"
-  exit 1
-}
-select_and_run_app
+if ! install_deps; then
+  warn "dependency install failed; continuing to application fallbacks"
+fi
+
+if [ -n "${NODE_CMD:-}" ]; then
+  warn "running custom NODE_CMD"
+  run_cmd env HOSTNAME="$HOST" NUXT_HOST="$HOST" NUXT_PORT="$PORT" sh -lc "$NODE_CMD"
+fi
+
+if run_dev; then
+  exit 0
+fi
+if run_start; then
+  exit 0
+fi
+[ ! -f server.js ] || run_cmd node server.js
+[ ! -f index.js ] || run_cmd node index.js
+
+warn "No runnable app started."
+warn "Checked: npm scripts dev/start, server.js, index.js."
+warn "Set NODE_CMD to override, e.g. NODE_CMD='node app.js'."
+
+if [ "$NODE_KEEPALIVE_ON_FAIL" = 1 ]; then
+  warn "Keeping container alive."
+  while :; do
+    sleep 3600
+  done
+fi
+
+exit 1
