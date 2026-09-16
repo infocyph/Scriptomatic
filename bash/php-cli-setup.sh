@@ -1,120 +1,255 @@
 #!/usr/bin/env bash
-# cli-setup.sh   USERNAME  PHP_VERSION
-set -euo pipefail
+# php-cli-setup.sh USERNAME PHP_VERSION
+set -Eeuo pipefail
+shopt -s extglob
 
-#####################################################################
-# Arguments & paths
-#####################################################################
 USERNAME="${1:?username required}"
 PHP_VERSION="${2:?php-version required}"
 
-HOME_DIR="/home/${USERNAME}"
-BASHRC="${HOME_DIR}/.bashrc"
-
-# Build-time ENV knobs (fall back to empty/defaults)
-: "${UID:=1000}"
-: "${GID:=1000}"
+LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
+: "${SCRIPTOMATIC_UID:=${LEGACY_UID_ENV:-1000}}"
+: "${SCRIPTOMATIC_GID:=${GID:-1000}}"
 : "${LINUX_PKG:=}"
 : "${LINUX_PKG_VERSIONED:=}"
 : "${PHP_EXT:=}"
 : "${PHP_EXT_VERSIONED:=}"
+: "${MSMTP_FROM:=dev@localhost}"
+: "${COMPOSER_VERSION:=}"
+: "${SCRIPTOMATIC_REF:=main}"
+: "${SCRIPTOMATIC_BASE_URL:=https://raw.githubusercontent.com/infocyph/Scriptomatic}"
+: "${TOOLSET_REF:=2.0}"
+: "${TOOLSET_RELEASE_BASE_URL:=https://github.com/infocyph/Toolset/releases/download}"
+: "${PHP_EXT_INSTALLER_VERSION:=2.11.12}"
+: "${PHP_EXT_INSTALLER_SHA256:=7c133ae4b9490d912287188c62ea570729cfa74f0ea357e4be672ce696b4aa29}"
+: "${PHP_EXT_INSTALLER_BASE_URL:=https://github.com/mlocati/docker-php-extension-installer/releases/download}"
+: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=0}"
+: "${SCRIPTOMATIC_OH_MY_BASH:=0}"
+: "${OHMYBASH_REF:=abf846186ab0a8a41ec5888e827ece6277dfe446}"
+: "${OHMYBASH_REPO_URL:=https://github.com/ohmybash/oh-my-bash.git}"
+: "${DOWNLOAD_CONNECT_TIMEOUT:=5}"
+: "${DOWNLOAD_MAX_TIME:=90}"
+: "${DOWNLOAD_ATTEMPTS:=4}"
 
-OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
-IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
-PHP_PROFILE="php$(
-  v=${PHP_VERSION//[^0-9.]/}; printf '%s%s' "${v%%.*}" "${v#*.}" | cut -d. -f1
-)"
-SOCK_DIR="/home/${USERNAME}/.run/php-fpm"
+HOME_DIR="/home/${USERNAME}"
+BASHRC="${HOME_DIR}/.bashrc"
+PHP_PROFILE="php$(v=${PHP_VERSION//[^0-9.]/}; printf '%s%s' "${v%%.*}" "${v#*.}" | cut -d. -f1)"
+SOCK_DIR="${HOME_DIR}/.run/php-fpm"
 DOMAINS_DIR="/usr/local/etc/php-fpm.domains/${PHP_PROFILE}"
 COMPOSER_HOME_VERSIONED="${HOME_DIR}/.composer/${PHP_PROFILE}"
-#####################################################################
-# Helper utilities
-#####################################################################
-user_exists() { getent passwd "$1" >/dev/null; }
-line_in_file() { grep -qF "$1" "$2"; }
+WORKDIR=""
+
+cleanup() {
+  [[ -z "${WORKDIR:-}" ]] || rm -rf -- "$WORKDIR"
+}
+trap cleanup EXIT INT TERM HUP
+
+fatal() {
+  printf 'php-cli-setup: %s\n' "$*" >&2
+  exit 1
+}
+
+trim() {
+  local value="$1"
+  value="${value##+([[:space:]])}"
+  value="${value%%+([[:space:]])}"
+  printf '%s' "$value"
+}
+
+validate_uint() {
+  local name="$1" value="$2"
+  [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 && value <= 2147483647 )) || fatal "$name must be a positive integer"
+}
+
+validate_flag() {
+  local name="$1" value="$2"
+  [[ "$value" == 0 || "$value" == 1 ]] || fatal "$name must be 0 or 1"
+}
+
+parse_csv() {
+  local input="$1" kind="$2" out_name="$3"
+  local -n out_ref="$out_name"
+  local -a raw=()
+  local token
+  out_ref=()
+  [[ -n "${input//[[:space:]]/}" ]] || return 0
+  IFS=',' read -r -a raw <<< "$input"
+  for token in "${raw[@]}"; do
+    token="$(trim "$token")"
+    [[ -n "$token" ]] || continue
+    [[ "$token" != -* ]] || fatal "$kind token may not begin with '-': $token"
+    case "$kind" in
+      package)
+        [[ "$token" =~ ^[A-Za-z0-9._+@:=\<\>~-]+$ ]] || fatal "unsafe package token: $token"
+        ;;
+      extension)
+        [[ "$token" =~ ^[A-Za-z0-9._+@\^/:~-]+$ ]] || fatal "unsafe PHP extension token: $token"
+        ;;
+      *) fatal "internal error: unknown CSV kind $kind" ;;
+    esac
+    out_ref+=("$token")
+  done
+}
+
+validate_inputs() {
+  [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}\$?$ ]] || fatal "invalid Linux username: $USERNAME"
+  [[ "$PHP_VERSION" =~ ^[0-9]+\.[0-9]+([.][0-9]+)?([_-][A-Za-z0-9._-]+)?$ ]] || fatal "invalid PHP version: $PHP_VERSION"
+  validate_uint SCRIPTOMATIC_UID "$SCRIPTOMATIC_UID"
+  validate_uint SCRIPTOMATIC_GID "$SCRIPTOMATIC_GID"
+  validate_flag SCRIPTOMATIC_PASSWORDLESS_SUDO "$SCRIPTOMATIC_PASSWORDLESS_SUDO"
+  validate_flag SCRIPTOMATIC_OH_MY_BASH "$SCRIPTOMATIC_OH_MY_BASH"
+  [[ "$MSMTP_FROM" != *$'\n'* && "$MSMTP_FROM" != *$'\r'* ]] || fatal "MSMTP_FROM must be one line"
+  [[ "$MSMTP_FROM" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]] || fatal "invalid MSMTP_FROM address"
+  [[ "$SCRIPTOMATIC_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || fatal "invalid SCRIPTOMATIC_REF"
+  [[ "$TOOLSET_REF" =~ ^[A-Za-z0-9._-]+$ ]] || fatal "invalid TOOLSET_REF"
+  [[ "$PHP_EXT_INSTALLER_VERSION" =~ ^[0-9]+([.][0-9]+){2}$ ]] || fatal "invalid PHP_EXT_INSTALLER_VERSION"
+  [[ "$PHP_EXT_INSTALLER_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || fatal "invalid PHP_EXT_INSTALLER_SHA256"
+  [[ -z "$COMPOSER_VERSION" || "$COMPOSER_VERSION" =~ ^[0-9]+([.][0-9]+){1,3}([.-][A-Za-z0-9._-]+)?$ ]] || fatal "invalid COMPOSER_VERSION"
+  validate_uint DOWNLOAD_CONNECT_TIMEOUT "$DOWNLOAD_CONNECT_TIMEOUT"
+  validate_uint DOWNLOAD_MAX_TIME "$DOWNLOAD_MAX_TIME"
+  validate_uint DOWNLOAD_ATTEMPTS "$DOWNLOAD_ATTEMPTS"
+}
+
+require_capabilities() {
+  command -v apk >/dev/null 2>&1 || fatal "apk is required; php-cli-setup supports Alpine PHP images"
+  command -v php >/dev/null 2>&1 || fatal "php is required"
+  [[ -d /usr/local/etc/php ]] || fatal "official PHP image layout /usr/local/etc/php is required"
+  [[ -f /usr/local/etc/php-fpm.conf ]] || fatal "missing /usr/local/etc/php-fpm.conf"
+  command -v sha256sum >/dev/null 2>&1 || fatal "sha256sum is required"
+}
+
+download() {
+  local url="$1" dest="$2" attempt
+  for ((attempt=1; attempt<=DOWNLOAD_ATTEMPTS; attempt++)); do
+    if curl --fail --location --silent --show-error \
+      --connect-timeout "$DOWNLOAD_CONNECT_TIMEOUT" \
+      --max-time "$DOWNLOAD_MAX_TIME" \
+      --output "$dest" "$url"; then
+      return 0
+    fi
+    (( attempt < DOWNLOAD_ATTEMPTS )) || break
+    sleep "$attempt"
+  done
+  fatal "download failed after ${DOWNLOAD_ATTEMPTS} attempt(s): $url"
+}
+
+verify_sha256() {
+  local file="$1" expected="$2" actual
+  actual="$(sha256sum "$file" | awk '{print $1}')"
+  [[ "$actual" == "$expected" ]] || fatal "SHA-256 mismatch for $(basename "$file")"
+}
+
+atomic_install() {
+  local source="$1" dest="$2" mode="${3:-0755}" dir tmp
+  dir="$(dirname "$dest")"
+  mkdir -p -- "$dir"
+  tmp="$(mktemp "${dir}/.scriptomatic.XXXXXX")"
+  install -m "$mode" "$source" "$tmp"
+  mv -f -- "$tmp" "$dest"
+}
+
+atomic_write() {
+  local dest="$1" mode="$2" dir tmp
+  dir="$(dirname "$dest")"
+  mkdir -p -- "$dir"
+  tmp="$(mktemp "${dir}/.scriptomatic.XXXXXX")"
+  cat > "$tmp"
+  chmod "$mode" "$tmp"
+  mv -f -- "$tmp" "$dest"
+}
+
+user_exists() { getent passwd "$1" >/dev/null 2>&1; }
+line_in_file() { grep -qF -- "$1" "$2" 2>/dev/null; }
 run_as_user() { sudo -u "$USERNAME" -H -- "$@"; }
 
-#####################################################################
-# 1. Base OS packages & PHP extensions
-#####################################################################
+install_php_extension_installer() {
+  local source="$WORKDIR/install-php-extensions"
+  local url="${PHP_EXT_INSTALLER_BASE_URL%/}/${PHP_EXT_INSTALLER_VERSION}/install-php-extensions"
+  download "$url" "$source"
+  verify_sha256 "$source" "${PHP_EXT_INSTALLER_SHA256,,}"
+  bash -n "$source"
+  chmod 0755 "$source"
+  printf '%s' "$source"
+}
+
+install_toolset_helper() {
+  local asset="$1" dest="$2" sums="$WORKDIR/toolset-SHA256SUMS" file="$WORKDIR/toolset-$asset" expected
+  if [[ ! -f "$sums" ]]; then
+    download "${TOOLSET_RELEASE_BASE_URL%/}/${TOOLSET_REF}/SHA256SUMS" "$sums"
+  fi
+  expected="$(awk -v name="$asset" '$2 == name || $2 == "*" name {print $1; exit}' "$sums")"
+  [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] || fatal "Toolset checksum missing for $asset at $TOOLSET_REF"
+  download "${TOOLSET_RELEASE_BASE_URL%/}/${TOOLSET_REF}/${asset}" "$file"
+  verify_sha256 "$file" "${expected,,}"
+  bash -n "$file"
+  atomic_install "$file" "$dest" 0755
+}
+
+install_scriptomatic_helper() {
+  local source_name="$1" dest="$2" file="$WORKDIR/scriptomatic-$source_name"
+  download "${SCRIPTOMATIC_BASE_URL%/}/${SCRIPTOMATIC_REF}/bash/${source_name}" "$file"
+  case "$source_name" in
+    php-entry.sh) sh -n "$file" ;;
+    *) bash -n "$file" ;;
+  esac
+  atomic_install "$file" "$dest" 0755
+}
+
 install_os_and_php() {
-  echo "👉 Installing base Alpine packages and PHP extensions…"
-  apk update
+  local -a linux_pkg=() linux_pkg_versioned=() php_ext=() php_ext_versioned=() extensions=()
+  parse_csv "$LINUX_PKG" package linux_pkg
+  parse_csv "$LINUX_PKG_VERSIONED" package linux_pkg_versioned
+  parse_csv "$PHP_EXT" extension php_ext
+  parse_csv "$PHP_EXT_VERSIONED" extension php_ext_versioned
+
   apk add --no-cache \
     curl git git-credential-libsecret bash shadow sudo dos2unix lsd \
     tzdata figlet ncurses musl-locales gawk ca-certificates msmtp jq zip \
-    ${LINUX_PKG//,/ } ${LINUX_PKG_VERSIONED//,/ }
+    "${linux_pkg[@]}" "${linux_pkg_versioned[@]}"
 
-  if [[ ! -x /usr/local/bin/install-php-extensions ]]; then
-    curl -fsSL "$IPE_URL" -o /usr/local/bin/install-php-extensions
-    chmod +x /usr/local/bin/install-php-extensions
-  fi
-
-  # Ensure system CA bundle exists (Alpine)
   update-ca-certificates >/dev/null 2>&1 || true
 
-  install-php-extensions @composer ${PHP_EXT//,/ } ${PHP_EXT_VERSIONED//,/ }
-  composer --no-interaction self-update --clean-backups
+  extensions=("${php_ext[@]}" "${php_ext_versioned[@]}")
+  if (( ${#extensions[@]} > 0 )) || [[ -n "$COMPOSER_VERSION" ]]; then
+    local installer
+    installer="$(install_php_extension_installer)"
+    if (( ${#extensions[@]} > 0 )); then
+      "$installer" "${extensions[@]}"
+    fi
+    if [[ -n "$COMPOSER_VERSION" ]]; then
+      "$installer" "@composer-${COMPOSER_VERSION}"
+    fi
+  elif ! command -v composer >/dev/null 2>&1; then
+    printf 'php-cli-setup: composer is not present; set COMPOSER_VERSION to install an exact version\n' >&2
+  fi
 
-  # Ensure FPM listens on 0.0.0.0:9000
-  sed -i 's|^listen = .*|listen = 0.0.0.0:9000|' /usr/local/etc/php-fpm.d/zz-docker.conf
-
-  # Clean apk cache to keep layers small
-  rm -rf /usr/local/bin/install-php-extensions /var/cache/apk/* /tmp/* /var/tmp/*
+  if [[ -f /usr/local/etc/php-fpm.d/zz-docker.conf ]]; then
+    sed -i 's|^listen = .*|listen = 0.0.0.0:9000|' /usr/local/etc/php-fpm.d/zz-docker.conf
+  fi
 }
 
-#####################################################################
-# 1a. PHP-FPM include path + runtime dirs (extra pool dir)
-#####################################################################
 configure_fpm_includes_and_dirs() {
-  echo "👉 Configuring PHP-FPM includes (/usr/local/etc/php-fpm.conf)…"
-
   local fpm_conf="/usr/local/etc/php-fpm.conf"
+  [[ -f "$fpm_conf" ]] || fatal "missing $fpm_conf"
 
-  # Ensure the main config exists
-  [[ -f "$fpm_conf" ]] || { echo "Error: missing $fpm_conf"; return 1; }
-
-  # Ensure default pools include exists
   if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.d/\*\.conf[[:space:]]*$' "$fpm_conf"; then
-    printf "\n; Default pool include\ninclude=/usr/local/etc/php-fpm.d/*.conf\n" >>"$fpm_conf"
+    printf '\n; Default pool include\ninclude=/usr/local/etc/php-fpm.d/*.conf\n' >> "$fpm_conf"
   fi
-
-  # Ensure Option-B include exists
   if ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*/usr/local/etc/php-fpm\.domains/\*\.conf[[:space:]]*$' "$fpm_conf"; then
-    printf "\n; Extra pool dir mounted from host\ninclude=%s/*.conf\n" "$DOMAINS_DIR" >>"$fpm_conf"
+    printf '\n; Extra pool dir mounted from host\ninclude=%s/*.conf\n' "$DOMAINS_DIR" >> "$fpm_conf"
   fi
 }
 
-#####################################################################
-# 1b. Force PHP to use the system bundle
-#####################################################################
 configure_required_ini() {
-  echo "👉 Writing PHP CA bundle ini…"
-  local ini_dir="/usr/local/etc/php/conf.d"
-  local ini_file="${ini_dir}/99-script-bundle.ini"
-
-  mkdir -p "$ini_dir"
-
-  cat >"$ini_file" <<'EOF'
+  atomic_write /usr/local/etc/php/conf.d/99-script-bundle.ini 0644 <<'EOF_INI'
 openssl.cafile=/etc/ssl/certs/ca-certificates.crt
 curl.cainfo=/etc/ssl/certs/ca-certificates.crt
 sendmail_path="/usr/bin/msmtp -t"
-EOF
-
-  chmod 0644 "$ini_file"
+EOF_INI
 }
 
-#####################################################################
-# 1c. Configure msmtp so PHP mail() relays to Mailpit via STARTTLS
-#####################################################################
 configure_msmtp() {
-  echo "👉 Writing msmtp config (/etc/msmtprc)…"
-
-  # Defaults: Mailpit inside docker network
-  : "${MSMTP_FROM:=dev@localhost}"
-
-  cat >/etc/msmtprc <<EOF
-# Auto-generated
+  atomic_write /etc/msmtprc 0644 <<EOF_MSMTP
+# Auto-generated by Scriptomatic
 defaults
 auth           off
 tls            on
@@ -128,167 +263,129 @@ port           1025
 from           ${MSMTP_FROM}
 
 account default : mailpit
-EOF
-
-  chmod 0644 /etc/msmtprc
+EOF_MSMTP
 }
 
-#####################################################################
-# 1d. Configure versioned Composer home (phpXX)
-#####################################################################
 configure_composer_home() {
-  echo "👉 Configuring Composer home (${COMPOSER_HOME_VERSIONED})…"
-  local profile_file="/etc/profile.d/composer-home.sh"
-
-  cat >"$profile_file" <<EOF
+  atomic_write /etc/profile.d/composer-home.sh 0644 <<EOF_PROFILE
 #!/bin/sh
 export COMPOSER_HOME="${COMPOSER_HOME_VERSIONED}"
-EOF
-  chmod +x "$profile_file"
+EOF_PROFILE
 
   if [[ -f "$BASHRC" ]] && ! line_in_file "export COMPOSER_HOME=\"${COMPOSER_HOME_VERSIONED}\"" "$BASHRC"; then
-    printf '\nexport COMPOSER_HOME="%s"\n' "$COMPOSER_HOME_VERSIONED" >>"$BASHRC"
+    printf '\nexport COMPOSER_HOME="%s"\n' "$COMPOSER_HOME_VERSIONED" >> "$BASHRC"
   fi
 }
 
-#####################################################################
-# 2. Drop helper scripts
-#####################################################################
 install_helper_scripts() {
-  echo "👉 Installing helper scripts…"
-  local helpers=(
-    "https://raw.githubusercontent.com/infocyph/Toolset/main/Git/gitx|/usr/local/bin/gitx"
-    "https://raw.githubusercontent.com/infocyph/Toolset/main/ChromaCat/chromacat|/usr/local/bin/chromacat"
-    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/banner.sh|/usr/local/bin/show-banner"
-    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/docknotify.sh|/usr/local/bin/docknotify"
-    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/php-entry.sh|/usr/local/bin/php-entry"
-    "https://raw.githubusercontent.com/infocyph/Scriptomatic/master/bash/alias-maker.sh|/usr/local/bin/alias-maker"
-  ) dests=() url dst pair
-  for pair in "${helpers[@]}"; do
-    IFS='|' read -r url dst <<< "$pair"
-    curl -fsSL "$url" -o "$dst"
-    dests+=("$dst")
-  done
-  chmod +x "${dests[@]}"
+  install_toolset_helper gitx /usr/local/bin/gitx
+  install_toolset_helper chromacat /usr/local/bin/chromacat
+  install_scriptomatic_helper banner.sh /usr/local/bin/show-banner
+  install_scriptomatic_helper docknotify.sh /usr/local/bin/docknotify
+  install_scriptomatic_helper php-entry.sh /usr/local/bin/php-entry
+  install_scriptomatic_helper alias-maker.sh /usr/local/bin/alias-maker
+  chown root:root /usr/local/bin/gitx /usr/local/bin/chromacat /usr/local/bin/show-banner \
+    /usr/local/bin/docknotify /usr/local/bin/php-entry /usr/local/bin/alias-maker
+  chmod 0755 /usr/local/bin/gitx /usr/local/bin/chromacat /usr/local/bin/show-banner \
+    /usr/local/bin/docknotify /usr/local/bin/php-entry /usr/local/bin/alias-maker
 }
 
-#####################################################################
-# 3. Banner hook executed for every interactive shell
-#####################################################################
 set_banner_hook() {
-  echo "👉 Setting global banner hook…"
-  mkdir -p /etc/profile.d
-  cat >/etc/profile.d/banner-hook.sh <<EOF
+  atomic_write /etc/profile.d/banner-hook.sh 0755 <<EOF_BANNER
 #!/bin/sh
 if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
   export BANNER_SHOWN=1
-  show-banner "PHP ${PHP_VERSION}"
+  show-banner "PHP ${PHP_VERSION}" || true
 fi
-EOF
-  chmod +x /etc/profile.d/banner-hook.sh
-
-  cat >/etc/profile.d/git-config-global.sh <<'EOF'
+EOF_BANNER
+  atomic_write /etc/profile.d/git-config-global.sh 0644 <<'EOF_GIT'
 #!/bin/sh
 export GIT_CONFIG_GLOBAL=/git-config/.gitconfig
-EOF
-  chmod +x /etc/profile.d/git-config-global.sh
+EOF_GIT
 }
 
-#####################################################################
-# 4. Create (or sync) non-root user with sudo rights
-#####################################################################
 create_user() {
-  echo "👉 Ensuring user ${USERNAME} (UID=${UID}, GID=${GID}) exists…"
-
-  # Ensure group
-  getent group "${GID}" >/dev/null || addgroup -g "${GID}" "${USERNAME}"
-
-  # Ensure user
-  if ! user_exists "${USERNAME}"; then
-    adduser -D -u "${UID}" -G "$(getent group "${GID}" | cut -d: -f1)" \
-      -h "${HOME_DIR}" -s /bin/bash "${USERNAME}"
+  local group_name
+  if getent group "$SCRIPTOMATIC_GID" >/dev/null 2>&1; then
+    group_name="$(getent group "$SCRIPTOMATIC_GID" | cut -d: -f1)"
+  else
+    addgroup -g "$SCRIPTOMATIC_GID" "$USERNAME"
+    group_name="$USERNAME"
   fi
 
-  # Sudo without password (already installed in install_os_and_php)
-  echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/"${USERNAME}"
-  chmod 0440 /etc/sudoers.d/"${USERNAME}"
+  if ! user_exists "$USERNAME"; then
+    adduser -D -u "$SCRIPTOMATIC_UID" -G "$group_name" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
+  fi
 
-  # Create required dirs
-  ( umask 022
-    mkdir -p \
-      "${COMPOSER_HOME_VERSIONED}/vendor" \
-      /var/log/php-fpm \
-      "$DOMAINS_DIR" \
-      "$SOCK_DIR"
-  )
+  if [[ "$SCRIPTOMATIC_PASSWORDLESS_SUDO" == 1 ]]; then
+    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$USERNAME" > "/etc/sudoers.d/${USERNAME}"
+    chmod 0440 "/etc/sudoers.d/${USERNAME}"
+  else
+    rm -f -- "/etc/sudoers.d/${USERNAME}"
+  fi
 
-  # Make sure php-fpm include glob never fails (needs at least one *.conf)
+  mkdir -p "${COMPOSER_HOME_VERSIONED}/vendor" /var/log/php-fpm "$DOMAINS_DIR" "$SOCK_DIR"
   : > "${DOMAINS_DIR}/00-empty.conf"
-  chmod 0644 "${DOMAINS_DIR}/00-empty.conf" || true
-
-  # Ownership: keep it minimal + deterministic
-  chown -R "${UID}:${GID}" "${HOME_DIR}/.composer" "$SOCK_DIR" /var/log/php-fpm 2>/dev/null || true
-
-  # Permissions
-  chmod 0755 "$DOMAINS_DIR" "$SOCK_DIR" /var/log/php-fpm || true
-
-  # Fix ownership of helper scripts & banner hook
-  chown root:root /etc/profile.d/banner-hook.sh
-  chown "${USERNAME}:${USERNAME}" /usr/local/bin/{cli-setup.sh,show-banner,gitx,chromacat} 2>/dev/null || true
+  chmod 0644 "${DOMAINS_DIR}/00-empty.conf"
+  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "${HOME_DIR}/.composer" "$SOCK_DIR" /var/log/php-fpm
+  chmod 0755 "$DOMAINS_DIR" "$SOCK_DIR" /var/log/php-fpm
 }
 
-#####################################################################
-# 5. Oh-My-Bash & .bashrc tweaks (from previous version)
-#####################################################################
 configure_oh_my_bash() {
-  echo "👉 Configuring Oh My Bash for ${USERNAME}…"
+  [[ "$SCRIPTOMATIC_OH_MY_BASH" == 1 ]] || return 0
+  [[ -d "${HOME_DIR}/.oh-my-bash" ]] && return 0
+  command -v git >/dev/null 2>&1 || fatal "git is required for Oh My Bash"
 
-  # Install Oh-My-Bash for the user if absent
-  if [[ ! -d "${HOME_DIR}/.oh-my-bash" ]]; then
-    run_as_user bash -c "curl -fsSL '$OHMB_URL' | bash -s -- --unattended"
+  local clone_dir="$WORKDIR/oh-my-bash"
+  git clone --quiet --no-checkout "$OHMYBASH_REPO_URL" "$clone_dir"
+  git -C "$clone_dir" checkout --quiet --detach "$OHMYBASH_REF"
+  rm -rf -- "$clone_dir/.git"
+  mv -- "$clone_dir" "${HOME_DIR}/.oh-my-bash"
+  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "${HOME_DIR}/.oh-my-bash"
+
+  [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
+  if [[ -f "${HOME_DIR}/.oh-my-bash/templates/bashrc.osh-template" && ! -s "$BASHRC" ]]; then
+    run_as_user cp "${HOME_DIR}/.oh-my-bash/templates/bashrc.osh-template" "$BASHRC"
   fi
 
-  [[ -f $BASHRC ]] || run_as_user touch "$BASHRC"
-
-  sed -i '
-    s/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/
-    s/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/
-    s/^[[:space:]]*#\?[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/
-    /^[[:space:]]*#\?[[:space:]]*plugins=([[:space:]]*$/,/^[[:space:]]*)[[:space:]]*$/c\plugins=(git bashmarks colored-man-pages npm xterm)
-  ' "$BASHRC"
+  sed -i \
+    -e 's/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/' \
+    -e 's/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/' \
+    "$BASHRC" || true
 }
 
-#####################################################################
-# 6. Banner snippet inside user’s .bashrc
-#####################################################################
 add_banner_snippet() {
-  local banner='if [ -n "$PS1" ] && [ -z "${BANNER_SHOWN-}" ]; then
-  export BANNER_SHOWN=1
-  show-banner "PHP '"${PHP_VERSION}"'"
-fi'
-
+  [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
   if ! line_in_file 'show-banner "PHP' "$BASHRC"; then
-    echo "👉 Adding banner snippet to .bashrc…"
-    printf "\n%s\n" "$banner" >>"$BASHRC"
+    cat >> "$BASHRC" <<EOF_BASHRC
+
+if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
+  export BANNER_SHOWN=1
+  show-banner "PHP ${PHP_VERSION}" || true
+fi
+EOF_BASHRC
   fi
+  chown "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$BASHRC"
 }
 
-#####################################################################
-# 7. Alias setup
-#####################################################################
 run_alias_maker() {
-  echo "👉 Applying aliases via alias-maker…"
   run_as_user /usr/local/bin/alias-maker
 }
 
-#####################################################################
-# 8. Orchestrate everything
-#####################################################################
+validate_runtime_config() {
+  php --ini >/dev/null
+  php -r 'exit(openssl_get_cert_locations()["default_cert_file"] === "" ? 1 : 0);' >/dev/null 2>&1 || true
+  if command -v php-fpm >/dev/null 2>&1; then
+    php-fpm -t >/dev/null 2>&1 || fatal "php-fpm configuration validation failed"
+  fi
+}
+
 main() {
-  [[ $EUID -eq 0 ]] || {
-    echo "Run as root (inside Docker build)"
-    exit 1
-  }
+  [[ $EUID -eq 0 ]] || fatal "run as root inside the PHP image build"
+  validate_inputs
+  require_capabilities
+  WORKDIR="$(mktemp -d /tmp/scriptomatic-php.XXXXXX)"
+  chmod 0700 "$WORKDIR"
 
   install_os_and_php
   configure_required_ini
@@ -301,10 +398,10 @@ main() {
   configure_composer_home
   add_banner_snippet
   run_alias_maker
+  validate_runtime_config
 
-  echo "✅ cli-setup complete for ${USERNAME}"
-  rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
-  rm -f -- "$0"
+  rm -rf -- /var/cache/apk/*
+  printf 'php-cli-setup complete for %s\n' "$USERNAME"
 }
 
 main "$@"
