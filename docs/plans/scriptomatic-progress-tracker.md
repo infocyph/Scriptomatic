@@ -6,19 +6,19 @@ Baseline: `main` at `261397d3271cda5a6c186a64f8239bd3205fcf93`
 
 Governing plan: `docs/plans/scriptomatic-hardening-plan.md`
 
-This tracker is temporary. Delete it together with the governing plan only after Phase 7 and the final clean-branch CI gate are complete.
+This tracker is temporary. Batch 3 implementation is complete; this closeout snapshot is intentionally committed before the tracker and governing plan are deleted for the final clean branch gate.
 
 ---
 
 # Current Focus
 
-**Batch 3 — Phase 5 + Phase 6 + Phase 7**
+**Batch 3 — Phase 5 + Phase 6 + Phase 7: COMPLETE**
 
-1. Phase 5 — harden Certbot and Mongo service helpers for non-interactive container use.
-2. Phase 6 — finish permanent docs, downstream contracts, and repository-wide security audit.
-3. Phase 7 — validate Scriptomatic as a Docker/LocalDevStack consumer dependency, then remove temporary planning/apply machinery and run the final clean gate.
+Validation head before temporary-plan cleanup: `01688ebf87da6999756d3ed9a3cdad24ecbf036e`
 
-Batch rule: progress three phases per implementation batch and update this tracker at batch start and close.
+Green aggregate CI: run `35089916708`.
+
+Batch rule: implementation advances three phases per batch and the tracker is updated at batch start and close.
 
 ---
 
@@ -30,11 +30,11 @@ Batch rule: progress three phases per implementation batch and update this track
 - [x] Container behavior takes precedence over host-machine convenience when contracts differ.
 - [x] Scriptomatic does not require a tag/release lifecycle.
 - [x] `main` is the canonical default Scriptomatic source.
-- [x] `SCRIPTOMATIC_REF` may override `main`; LocalDevStack reproducible builds should use a commit SHA.
+- [x] `SCRIPTOMATIC_REF` may override `main`; reproducible LocalDevStack builds should use a commit SHA.
 - [x] All sibling Scriptomatic downloads use the same selected `SCRIPTOMATIC_REF`.
 - [x] Toolset is consumed through stable release `2.0`.
 - [x] PHP/Node scripts remain compatible with Alpine container images and non-root runtime users.
-- [x] Final implementation plan/tracker must be deleted before merge.
+- [x] Temporary implementation plan/tracker are removed only after recording this completed closeout state.
 
 ---
 
@@ -52,25 +52,21 @@ Batch rule: progress three phases per implementation batch and update this track
 
 # Phase 2 — PHP Runtime Bootstrap
 
-Targets: `bash/php-cli-setup.sh`, `bash/php-entry.sh`
-
 - [x] Privileged input/package/extension validation.
-- [x] Explicit Alpine/PHP-image capability contract.
+- [x] Alpine/PHP-image capability contract.
 - [x] Pinned + verified PHP extension installer.
 - [x] No floating Composer self-update; exact optional Composer version.
 - [x] Toolset `2.0` helper acquisition with release checksums.
 - [x] Same-ref Scriptomatic helper acquisition.
 - [x] Shared executables remain root-owned `0755`.
 - [x] Passwordless sudo is explicit opt-in.
-- [x] Generated PHP/FPM config validation and idempotent FPM include.
+- [x] Generated PHP/FPM validation and repeatable FPM include.
 - [x] Private temp workspace; no broad temp deletion/self-delete.
 - [x] Optional immutable Oh My Bash path.
 - [x] Content-aware root-CA refresh and transparent PHP entrypoint exec.
 - [x] Disposable PHP Alpine bootstrap/re-run gate green.
 
 # Phase 3 — Node Runtime Bootstrap
-
-Targets: `bash/node-cli-setup.sh`, `bash/node-entry.sh`
 
 - [x] Input/package/global-package validation.
 - [x] Upstream UID/GID reuse retained and result verified.
@@ -86,86 +82,94 @@ Targets: `bash/node-cli-setup.sh`, `bash/node-entry.sh`
 
 # Phase 4 — Shared Utilities
 
-Targets: `alias-maker.sh`, `banner.sh`, `docknotify.sh`, `owners.sh`
-
-- [x] Alias managed block is repeatable/idempotent and atomic.
+- [x] Alias managed block repeatable/idempotent and atomic.
 - [x] Optional aliases degrade safely.
-- [x] Banner has plain/non-TTY/NO_COLOR fallbacks and cannot make shell startup fail.
-- [x] Dock notification protocol has exact newline framing, validated fields, token-safe diagnostics, strict/non-strict behavior.
-- [x] Owners uses NUL-safe Git enumeration and stable TSV output.
-- [x] Permanent utility tests added.
+- [x] Banner plain/non-TTY/NO_COLOR fallback and non-critical startup behavior.
+- [x] Dock notification framing, validation, token-safe diagnostics, strict/non-strict behavior.
+- [x] Owners NUL-safe Git enumeration and stable TSV output.
+- [x] Permanent utility tests.
 - [x] Shared utility integration gate green.
 
 ---
 
 # Phase 5 — Server / Service Helpers
 
-Targets: `certbot-hook.sh`, `certbot-renew.sh`, `mongo-replica.sh`
-
 ## Certbot hook
 
-- [ ] Use exact container existence/running checks, not substring/status filters.
-- [ ] Remove interactive TTY flags.
-- [ ] Make Nginx/Apache container names configurable.
-- [ ] Missing optional container cleanly skips.
-- [ ] Existing-but-stopped/reload-failed target returns non-zero with useful diagnostics.
-- [ ] Keep behavior suitable for execution inside a service/container control plane.
+- [x] Exact `docker container inspect` existence/running checks replace substring/status filters.
+- [x] Interactive TTY flags removed.
+- [x] Nginx/Apache container names configurable.
+- [x] Missing optional container cleanly skips.
+- [x] Existing-but-stopped/reload-failed target returns non-zero with diagnostics.
+- [x] Reload execution bounded by timeout and suitable for a service/control container.
 
-## Certbot renew loop
+## Certbot renewal loop
 
-- [ ] Strict shell/error policy.
-- [ ] Configurable interval and optional bounded jitter.
-- [ ] Signal-aware shutdown.
-- [ ] Failure counter + diagnostics/backoff behavior.
-- [ ] No silent infinite failure loop.
-- [ ] Container foreground-process semantics documented/tested.
+- [x] Strict shell/error policy.
+- [x] Configurable interval and bounded optional jitter.
+- [x] Signal-aware foreground shutdown.
+- [x] Failure counter, backoff, and diagnostics.
+- [x] Default repeated-failure threshold prevents silent infinite failure loops.
+- [x] One-cycle deterministic mode and container foreground semantics tested/documented.
 
 ## Mongo replica bootstrap
 
-- [ ] Bounded readiness polling; no fixed `sleep 10`.
-- [ ] Prefer `mongosh`; documented legacy `mongo` fallback only if available.
-- [ ] Configurable replica-set name/member endpoints/readiness timeout.
-- [ ] Detect initialized desired topology.
-- [ ] Initiate only when uninitialized.
-- [ ] Conflicting topology fails unless explicit reconciliation exists.
-- [ ] Container/Docker-DNS endpoint assumptions are explicit.
+- [x] Bounded readiness polling; fixed startup sleep removed.
+- [x] `mongosh` preferred; legacy `mongo` fallback retained deliberately.
+- [x] Configurable replica-set name, member endpoints, connection URI, and timeouts.
+- [x] Existing desired topology detected and accepted without mutation.
+- [x] Initialization occurs only for an uninitialized replica set.
+- [x] Conflicting topology fails rather than reconciling implicitly.
+- [x] Docker-DNS member endpoint assumptions explicit and separate from the connection URI.
+- [x] Topology return codes preserved correctly under strict Bash control flow.
 
 ## Tests / gate
 
-- [ ] Permanent `tests/certbot.sh` and `tests/mongo-replica.sh` cover deterministic fixtures.
-- [ ] Server/service helper integration gate green.
+- [x] Permanent `tests/certbot.sh` and `tests/mongo-replica.sh` deterministic fixtures.
+- [x] Server/service helper integration green.
+- [x] Phase 5 aggregate gate green in run `35089916708`.
 
 ---
 
 # Phase 6 — Permanent Documentation / Security / Downstream Contract
 
-- [ ] Finalize README script inventory and container-focused examples.
-- [ ] Finalize `docs/script-contracts.md` for purpose/invocation/env/dependencies/privilege/mutations/network/exit semantics.
-- [ ] Finalize `docs/security-review.md` with accepted trust boundaries.
-- [ ] Document LocalDevStack normal `SCRIPTOMATIC_REF=main` behavior and commit-SHA reproducible pinning.
-- [ ] Document `TOOLSET_REF=2.0` stable dependency.
-- [ ] Document container-first assumptions: Alpine PHP/Node bootstrap, non-root runtime, Docker stdout/stderr, service-name/Docker-DNS endpoints, no TTY requirement for automation.
-- [ ] Expand security audit repository-wide: no remote pipe-to-shell, hidden mutable Toolset refs, `master` refs, broad temp deletion, setup self-delete, stale CA stamps, secret leakage, or unintended shared-binary ownership.
-- [ ] Validate entrypoint exit/signal contracts after final source changes.
-- [ ] Phase 6 documentation/security gate green.
+- [x] README finalized with container-focused inventory/examples.
+- [x] `docs/script-contracts.md` finalized for behavior/env/privilege/mutation/network/exit contracts.
+- [x] `docs/security-review.md` finalized with accepted trust boundaries.
+- [x] `docs/localdevstack-consumer-contract.md` added.
+- [x] LocalDevStack normal `SCRIPTOMATIC_REF=main` behavior and commit-SHA reproducible pinning documented.
+- [x] `TOOLSET_REF=2.0` stable dependency documented.
+- [x] Container-first assumptions documented: Alpine PHP/Node bootstrap, non-root runtime, Docker stdout/stderr, Docker DNS/service names, no-TTY automation.
+- [x] Security audit expanded repository-wide with no phase backlog/temporary allowlist.
+- [x] Entrypoint exit/signal contracts revalidated after source changes.
+- [x] Phase 6 documentation/security gate green in run `35089916708`.
 
 ---
 
 # Phase 7 — LocalDevStack / Docker Consumer Validation + Final Cleanup
 
-This phase exists because Scriptomatic is predominantly consumed inside Docker containers, especially LocalDevStack. It validates the dependency boundary without moving LocalDevStack orchestration logic into Scriptomatic.
+## Consumer validation
 
-- [ ] Inspect current LocalDevStack Docker/PHP/Node/service consumers against the hardened Scriptomatic contracts.
-- [ ] Verify PHP and Node image/bootstrap call shapes remain compatible.
-- [ ] Verify `bash`, `sh`, and login-shell behavior where LocalDevStack relies on them.
-- [ ] Verify root-CA mounted-file behavior under non-root runtime users.
-- [ ] Verify `docknotify` defaults match the LocalDevStack notification service contract.
-- [ ] Verify service helpers use Docker DNS/container names rather than static IP assumptions.
-- [ ] Identify required downstream pin/config changes separately; do not hard-code LocalDevStack internals into reusable scripts.
-- [ ] Remove all one-shot apply/migration workflows/scripts.
-- [ ] Delete `docs/plans/scriptomatic-hardening-plan.md` and this tracker only after all Phase 7 checks are complete.
+- [x] Inspected current LocalDevStack planning branch Docker/PHP/Node/service consumers.
+- [x] Confirmed PHP/Node Dockerfiles still use `Scriptomatic/master`; recorded required migration instead of mutating planning-only Dockerfiles.
+- [x] Confirmed hardened PHP/Node bootstrap call shapes remain compatible when explicit `SCRIPTOMATIC_REF`, `SCRIPTOMATIC_UID`, `SCRIPTOMATIC_GID`, and `TOOLSET_REF` are propagated.
+- [x] Documented `bash`, `sh`, and login-shell boundary; application entrypoints do not depend on interactive shell startup.
+- [x] Root-CA behavior under non-root runtime users documented with explicit trusted-development sudo choice.
+- [x] `docknotify` defaults verified/documented against `SERVER_TOOLS:9901`, best-effort by default.
+- [x] Service helpers use configurable Docker DNS/container names rather than static IP assumptions.
+- [x] Current LocalDevStack Mongo is single-node; Scriptomatic replica topology remains generic/configurable instead of hard-coding the current compose shape.
+- [x] Required downstream pin/config changes isolated into the LocalDevStack shared-foundations plan and permanent Scriptomatic consumer contract.
+- [x] LocalDevStack `docs/plans/docker-ecosystem/01-shared-foundations-plan.md` updated with the accepted Scriptomatic/Toolset handoff contract.
+
+## Final cleanup state
+
+- [x] Phase 5–7 source/docs/tests pass aggregate CI before plan cleanup (`35089916708`).
+- [ ] Remove any remaining one-shot migration/apply workflow/script artifacts after final repository inspection.
+- [ ] Remove stale phase-only wording from permanent CI/test surfaces.
+- [ ] Delete governing implementation plan and this tracker after this closeout commit.
 - [ ] Refresh draft PR #57 to reference permanent artifacts only.
 - [ ] Run final aggregate CI on the clean branch.
+- [ ] Confirm no unresolved PR review threads/blockers.
 - [ ] Branch/PR merge-ready, but do not merge automatically.
 
 ---
@@ -176,8 +180,13 @@ This phase exists because Scriptomatic is predominantly consumed inside Docker c
 
 - Created `plan/scriptomatic-hardening` from current `main`.
 - Established source policy: Scriptomatic `main` by default, optional ref/SHA override; Toolset stable `2.0`.
-- Completed Phases 1–2; clean aggregate CI green.
-- Completed Phases 3–4; Node Alpine + shared-utility + security aggregate CI green (run `35088528923`).
-- User clarified Scriptomatic scripts are primarily consumed inside Docker/LocalDevStack containers.
-- Changed batching rule to three phases per batch.
-- Started Batch 3: Phases 5–7, with Phase 7 dedicated to Docker/LocalDevStack consumer validation and final cleanup.
+- Completed Phases 1–2; aggregate CI green.
+- Completed Phases 3–4; Node Alpine + shared-utility + security aggregate CI green (`35088528923`).
+- User clarified Scriptomatic scripts are primarily consumed inside Docker/LocalDevStack containers and set a three-phases-per-batch rule.
+- Started Batch 3: Phases 5–7 and updated tracker before implementation.
+- Hardened Certbot reload/renewal and Mongo replica bootstrap for non-interactive container operation.
+- Finalized permanent container-first docs and repository-wide security audit.
+- Inspected LocalDevStack `plan/docker-ecosystem-bottom-up`; found the PHP/Node `Scriptomatic/master` migration requirement and documented the accepted downstream ref/UID/GID/sudo contract.
+- Updated LocalDevStack shared-foundations plan without changing its planning-only Dockerfiles.
+- Closed Batch 3 implementation at Scriptomatic head `01688ebf87da6999756d3ed9a3cdad24ecbf036e`; aggregate CI run `35089916708` fully green.
+- Next operation is cleanup-only: remove temporary plan/tracker/one-shot artifacts, refresh PR #57, and require one final clean-branch CI gate.
