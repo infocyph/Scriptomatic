@@ -122,7 +122,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Run phase-aware audit
+      - name: Run repository-wide audit
         run: bash tests/security-audit.sh
 
   gate:
