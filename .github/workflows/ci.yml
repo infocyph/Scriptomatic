@@ -102,14 +102,18 @@ jobs:
         run: bash tests/node-entry.sh
 
   server-helpers:
-    name: Server-helper integration baseline
+    name: Server/service helper integration
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Validate current server-helper parsers
-        run: bash tests/server-baseline.sh
+      - name: Run Certbot and Mongo fixtures
+        run: |
+          set -Eeuo pipefail
+          bash tests/server-baseline.sh
+          bash tests/certbot.sh
+          bash tests/mongo-replica.sh
 
   security:
     name: Security audit
