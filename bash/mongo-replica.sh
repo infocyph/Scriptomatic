@@ -112,8 +112,10 @@ wait_for_desired_topology() {
   while :; do
     if check_topology "$members_js" "$rs_name"; then
       return 0
+    else
+      rc=$?
     fi
-    rc=$?
+
     (( rc == 42 )) && fatal "replica-set topology conflicts with requested configuration"
     (( SECONDS < deadline )) || fatal "replica-set configuration did not converge within ${MONGO_INIT_TIMEOUT_SECONDS}s"
     sleep "$MONGO_READY_INTERVAL_SECONDS"
@@ -139,8 +141,9 @@ main() {
   if check_topology "$members_js" "$rs_name"; then
     log "replica set '$MONGO_RS_NAME' already matches requested topology"
     return 0
+  else
+    rc=$?
   fi
-  rc=$?
 
   case "$rc" in
     3)
