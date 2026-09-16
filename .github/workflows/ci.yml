@@ -28,14 +28,22 @@ jobs:
         run: bash tests/static.sh
 
   utility:
-    name: Utility smoke
+    name: Shared utility integration
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Run smoke harness
-        run: bash tests/smoke.sh
+      - name: Install utility test dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends netcat-openbsd
+      - name: Run shared utility suites
+        run: |
+          set -Eeuo pipefail
+          bash tests/smoke.sh
+          bash tests/alias-maker.sh
+          bash tests/banner.sh
+          bash tests/docknotify.sh
+          bash tests/owners.sh
 
   php-bootstrap:
     name: PHP Alpine bootstrap integration
@@ -60,9 +68,9 @@ jobs:
             sh -lc 'apk add --no-cache bash coreutils >/dev/null && bash tests/php-bootstrap.sh'
 
   node-bootstrap:
-    name: Node Alpine bootstrap fixture
+    name: Node Alpine bootstrap integration
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -74,12 +82,12 @@ jobs:
             [ "$attempt" -eq 3 ] && exit 1
             sleep "$attempt"
           done
-      - name: Validate Node bootstrap fixture
+      - name: Run Node bootstrap fixture
         run: |
           docker run --rm --pull=never \
             -v "$PWD:/repo:ro" -w /repo \
             node:24-alpine \
-            sh -lc 'apk add --no-cache bash >/dev/null && bash tests/node-bootstrap.sh'
+            sh -lc 'apk add --no-cache bash coreutils >/dev/null && bash tests/node-bootstrap.sh'
 
   entrypoints:
     name: Runtime entrypoint integration
@@ -90,7 +98,7 @@ jobs:
         uses: actions/checkout@v7
       - name: Validate PHP entrypoint
         run: bash tests/php-entry.sh
-      - name: Validate Node entrypoint baseline
+      - name: Validate Node entrypoint
         run: bash tests/node-entry.sh
 
   server-helpers:
@@ -101,12 +109,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Validate current server-helper parsers
-        run: |
-          set -Eeuo pipefail
-          bash -n bash/certbot-hook.sh
-          bash -n bash/certbot-renew.sh
-          bash -n bash/mongo-replica.sh
-          echo 'Server-helper behavioral fixtures expand in Phase 5.'
+        run: bash tests/server-baseline.sh
 
   security:
     name: Security audit
