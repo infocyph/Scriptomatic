@@ -15,8 +15,12 @@ for script in "${scripts[@]}"; do
 done
 
 for file in "$ROOT/bash/php-cli-setup.sh" "$ROOT/bash/node-cli-setup.sh"; do
-  assert_contains "$file" 'SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash"'
-  assert_contains "$file" 'TOOLSET_BASE_URL="https://raw.githubusercontent.com/infocyph/Toolset/main"'
+  assert_contains "$file" ': "${SCRIPTOMATIC_REF:=main}"'
+  assert_contains "$file" ': "${TOOLSET_REF:=2.0}"'
+  assert_contains "$file" 'SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic/${SCRIPTOMATIC_REF}/bash"'
+  assert_contains "$file" 'TOOLSET_RELEASE_BASE_URL="https://github.com/infocyph/Toolset/releases/download/${TOOLSET_REF}"'
+  assert_contains "$file" 'SHA256SUMS'
+  assert_contains "$file" 'sha256sum'
 done
 
 assert_contains "$ROOT/README.md" 'https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/<script>.sh'
@@ -29,12 +33,17 @@ if grep -IRn 'raw.githubusercontent.com/infocyph/Scriptomatic/master/' \
   fail 'canonical Scriptomatic surfaces still reference master'
 fi
 
+if grep -IRn 'raw.githubusercontent.com/infocyph/Toolset/main' \
+  "$ROOT/bash" "$ROOT/README.md" "$ROOT/docs/script-contracts.md" "$ROOT/docs/security-review.md" >/dev/null 2>&1; then
+  fail 'Scriptomatic still consumes Toolset from a mutable branch'
+fi
+
 if find "$ROOT/.github/workflows" -maxdepth 1 -type f \( -iname '*release*' -o -iname '*publish*' \) | grep -q .; then
-  fail 'release/publish workflow exists despite main-only distribution contract'
+  fail 'release/publish workflow exists despite main-only Scriptomatic distribution contract'
 fi
 
 if grep -IRnE '^[[:space:]]*tags:' "$ROOT/.github/workflows" >/dev/null 2>&1; then
-  fail 'tag-triggered workflow exists despite main-only distribution contract'
+  fail 'tag-triggered workflow exists despite main-only Scriptomatic distribution contract'
 fi
 
-pass 'main-branch distribution contract'
+pass 'main-branch and downstream dependency contract'
