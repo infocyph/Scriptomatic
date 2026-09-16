@@ -192,8 +192,6 @@ move_user_home() {
     return 0
   fi
 
-  # Preserve the pre-existing best-effort behavior without asking usermod to
-  # move into an already-existing directory. The target must be a directory.
   [[ -d "$desired_home" ]] || {
     echo "Cannot set home for $user: $desired_home exists and is not a directory" >&2
     return 1
@@ -260,6 +258,14 @@ ensure_bashrc_line() {
   line_in_file "$line" "$BASHRC" || printf '%s\n' "$line" >> "$BASHRC"
 }
 
+ensure_node_profile() {
+  [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
+  ensure_bashrc_line 'export NPM_CONFIG_PREFIX="$HOME/.npm-global"'
+  ensure_bashrc_line 'export NPM_CONFIG_CACHE="$HOME/.npm"'
+  ensure_bashrc_line 'export PATH="$HOME/.npm-global/bin:$PATH"'
+  ensure_bashrc_line 'export GIT_CONFIG_GLOBAL="/git-config/.gitconfig"'
+}
+
 configure_node() {
   echo "👉 Configuring Node tooling…"
   corepack enable >/dev/null 2>&1 || true
@@ -273,12 +279,7 @@ configure_node() {
   local grp
   grp="$(group_by_gid "$GID" || echo "$USERNAME")"
   chown -R "$USERNAME:$grp" "${HOME_DIR}/.npm" "${HOME_DIR}/.cache" "${HOME_DIR}/.npm-global"
-  run_as_user touch "$BASHRC"
-
-  ensure_bashrc_line 'export NPM_CONFIG_PREFIX="$HOME/.npm-global"'
-  ensure_bashrc_line 'export NPM_CONFIG_CACHE="$HOME/.npm"'
-  ensure_bashrc_line 'export PATH="$HOME/.npm-global/bin:$PATH"'
-  ensure_bashrc_line 'export GIT_CONFIG_GLOBAL="/git-config/.gitconfig"'
+  ensure_node_profile
 
   if (( ${#NODE_GLOBAL_PACKAGES[@]} + ${#NODE_GLOBAL_PACKAGES_VERSIONED[@]} > 0 )); then
     echo "👉 Installing global Node packages…"
@@ -338,6 +339,7 @@ main() {
   create_user
   configure_node
   configure_oh_my_bash
+  ensure_node_profile
   add_banner_snippet
   run_alias_maker
 
