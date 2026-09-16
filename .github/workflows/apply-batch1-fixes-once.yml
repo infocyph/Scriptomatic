@@ -1,0 +1,41 @@
+name: Apply Batch 1 fixes once
+
+on:
+  push:
+    branches:
+      - plan/scriptomatic-hardening
+    paths:
+      - .github/workflows/apply-batch1-fixes-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v7
+        with:
+          ref: plan/scriptomatic-hardening
+          fetch-depth: 0
+      - name: Apply narrow validation fixes
+        run: python3 .github/scripts/apply-batch1-fixes.py
+      - name: Validate changed paths
+        run: |
+          set -Eeuo pipefail
+          bash -n bash/php-cli-setup.sh
+          bash -n tests/php-entry.sh
+          bash -n tests/security-audit.sh
+          bash tests/php-entry.sh
+          bash tests/security-audit.sh
+      - name: Commit fixes
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bash/php-cli-setup.sh tests/php-entry.sh tests/security-audit.sh
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: close Batch 1 validation regressions'
+          git push origin HEAD:plan/scriptomatic-hardening
