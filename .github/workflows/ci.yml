@@ -27,6 +27,18 @@ jobs:
       - uses: actions/checkout@v7
       - run: bash tests/smoke.sh
 
+  utilities:
+    name: Shared utility regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run shared utility tests
+        run: |
+          bash tests/alias-maker.sh
+          bash tests/banner.sh
+          bash tests/docknotify.sh
+          bash tests/owners.sh
+
   php:
     name: PHP bootstrap integration
     runs-on: ubuntu-latest
@@ -59,11 +71,14 @@ jobs:
           bash tests/node-entry.sh
 
   server_helpers:
-    name: Server helper baseline
+    name: Server helper integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: bash tests/server-baseline.sh
+      - run: |
+          bash tests/server-baseline.sh
+          bash tests/certbot.sh
+          bash tests/mongo-replica.sh
 
   security:
     name: Security and hardening audit
@@ -75,19 +90,20 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [static, smoke, php, node, entrypoints, server_helpers, security]
+    needs: [static, smoke, utilities, php, node, entrypoints, server_helpers, security]
     runs-on: ubuntu-latest
     steps:
       - name: Require all jobs
         env:
           STATIC: ${{ needs.static.result }}
           SMOKE: ${{ needs.smoke.result }}
+          UTILITIES: ${{ needs.utilities.result }}
           PHP: ${{ needs.php.result }}
           NODE: ${{ needs.node.result }}
           ENTRYPOINTS: ${{ needs.entrypoints.result }}
           SERVER_HELPERS: ${{ needs.server_helpers.result }}
           SECURITY: ${{ needs.security.result }}
         run: |
-          for result in "$STATIC" "$SMOKE" "$PHP" "$NODE" "$ENTRYPOINTS" "$SERVER_HELPERS" "$SECURITY"; do
+          for result in "$STATIC" "$SMOKE" "$UTILITIES" "$PHP" "$NODE" "$ENTRYPOINTS" "$SERVER_HELPERS" "$SECURITY"; do
             test "$result" = success
           done
