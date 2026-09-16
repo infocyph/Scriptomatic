@@ -6,7 +6,9 @@ shopt -s extglob
 USERNAME="${1:?username required}"
 PHP_VERSION="${2:?php-version required}"
 
-LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
+# Bash owns UID as a readonly special variable. Read the inherited Docker/build
+# environment directly so the historical UID input keeps working.
+LEGACY_UID_ENV="$(tr '\0' '\n' < "/proc/$$/environ" | sed -n 's/^UID=//p' | head -n1)"
 TARGET_UID="${LEGACY_UID_ENV:-1000}"
 TARGET_GID="${GID:-1000}"
 : "${LINUX_PKG:=}"
@@ -54,7 +56,6 @@ validate_uint() {
   local name="$1" value="$2"
   [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 && value <= 2147483647 )) || fatal "$name must be a positive integer"
 }
-
 
 parse_csv() {
   local input="$1" kind="$2" out_name="$3"
