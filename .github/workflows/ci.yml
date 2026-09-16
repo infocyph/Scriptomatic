@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master", "develop", "development" ]
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static and shell validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+      - name: Run static checks
+        run: bash tests/static.sh
+
+  smoke:
+    name: Utility smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash tests/smoke.sh
+
+  utilities:
+    name: Shared utility regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run shared utility tests
+        run: |
+          bash tests/alias-maker.sh
+          bash tests/banner.sh
+          bash tests/docknotify.sh
+          bash tests/owners.sh
+
+  php:
+    name: PHP bootstrap integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: PHP bootstrap and entrypoint
+        env:
+          SCRIPTOMATIC_FULL_INTEGRATION: '1'
+        run: |
+          bash tests/php-bootstrap.sh
+          bash tests/php-entry.sh
+
+  node:
+    name: Node bootstrap integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Node bootstrap
+        env:
+          SCRIPTOMATIC_FULL_INTEGRATION: '1'
+        run: bash tests/node-bootstrap.sh
+
+  entrypoints:
+    name: Entrypoint integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          bash tests/php-entry.sh
+          bash tests/node-entry.sh
+
+  server_helpers:
+    name: Server helper integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          bash tests/server-baseline.sh
+          bash tests/certbot.sh
+          bash tests/mongo-replica.sh
+
+  security:
+    name: Security and hardening audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          bash tests/security-audit.sh
+          bash tests/main-contract.sh
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [static, smoke, utilities, php, node, entrypoints, server_helpers, security]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all jobs
+        env:
+          STATIC: ${{ needs.static.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          UTILITIES: ${{ needs.utilities.result }}
+          PHP: ${{ needs.php.result }}
+          NODE: ${{ needs.node.result }}
+          ENTRYPOINTS: ${{ needs.entrypoints.result }}
+          SERVER_HELPERS: ${{ needs.server_helpers.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: |
+          for result in "$STATIC" "$SMOKE" "$UTILITIES" "$PHP" "$NODE" "$ENTRYPOINTS" "$SERVER_HELPERS" "$SECURITY"; do
+            test "$result" = success
+          done

@@ -6,26 +6,34 @@ BASHRC="${HOME:-/root}/.bashrc"
 line_in_file() { grep -qF "$1" "$2" 2>/dev/null; }
 append_if_missing() {
   local line="$1"
-  line_in_file "$line" "$BASHRC" || echo "$line" >>"$BASHRC"
+  line_in_file "$line" "$BASHRC" || printf '%s\n' "$line" >>"$BASHRC"
 }
 block_in_file() { grep -qF "$1" "$BASHRC" 2>/dev/null; }
 upsert_block() {
   local start_marker="$1"
   local end_marker="$2"
   local content="$3"
-  local tmp_file
+  local tmp_file=""
 
   if block_in_file "$start_marker"; then
-    tmp_file="$(mktemp)" || {
-      echo "Failed to create temp file."
+    tmp_file="$(mktemp "${BASHRC}.tmp.XXXXXX")" || {
+      echo "Failed to create temp file." >&2
       return 1
     }
+    trap '[[ -z "${tmp_file:-}" ]] || rm -f -- "$tmp_file"' RETURN
 
+    cp -p -- "$BASHRC" "$tmp_file"
     awk -v start="$start_marker" -v end="$end_marker" '
       $0 == start { in_block=1; next }
       in_block && $0 == end { in_block=0; next }
       !in_block { print }
-    ' "$BASHRC" >"$tmp_file" && mv "$tmp_file" "$BASHRC"
+    ' "$BASHRC" >"${tmp_file}.new"
+    chmod --reference="$BASHRC" "${tmp_file}.new" 2>/dev/null || chmod 0600 "${tmp_file}.new"
+    chown --reference="$BASHRC" "${tmp_file}.new" 2>/dev/null || true
+    mv -f -- "${tmp_file}.new" "$BASHRC"
+    rm -f -- "$tmp_file"
+    tmp_file=""
+    trap - RETURN
   fi
 
   printf "\n%s\n" "$content" >>"$BASHRC"
@@ -35,7 +43,6 @@ mkdir -p "$(dirname "$BASHRC")"
 touch "$BASHRC"
 
 ALIASES=(
-  # Navigation and listing
   'alias l="lsd -l"'
   'alias la="lsd -A"'
   'alias lla="lsd -lA"'
@@ -47,7 +54,6 @@ ALIASES=(
   'alias cls="clear"'
   'alias h="history"'
   'alias reload="source ~/.bashrc"'
-  # Git shortcuts
   'alias g="git"'
   'alias ga="git add"'
   'alias gb="git branch"'
@@ -72,7 +78,6 @@ ALIASES=(
   'alias gscoff="git config --local core.safecrlf false"'
   'alias d2u="git_fix_eol"'
   'alias d2utree="convert_tree_eol"'
-  # JS/PHP helpers
   'alias nrd="npm run dev"'
   'alias nrt="npm run test"'
   'alias cda="composer dump-autoload -o"'
@@ -87,28 +92,33 @@ FUNCTION_BLOCK_MARKER='# >>> scriptomatic-utils >>>'
 FUNCTION_BLOCK_END_MARKER='# <<< scriptomatic-utils <<<'
 FUNCTION_BLOCK_CONTENT="$(cat <<'EOF'
 # >>> scriptomatic-utils >>>
-# Remove dos2unix temp files left behind after failed conversions.
 cleanup_dos2unix_tmp() {
   local file="$1"
   local dir
-
   dir="$(dirname -- "$file")"
   find "$dir" -maxdepth 1 -type f -name 'd2utmp*' -exec rm -f -- {} + >/dev/null 2>&1 || true
 }
 
-# Run dos2unix on a file and clean temp artifacts if conversion fails.
 dos2unix_file() {
   local file="$1"
 
-  sudo dos2unix "$file" >/dev/null 2>&1 && return 0
+  if [[ -w "$file" ]]; then
+    dos2unix -- "$file" >/dev/null 2>&1 && return 0
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo -n dos2unix -- "$file" >/dev/null 2>&1 && return 0
+  fi
+
   cleanup_dos2unix_tmp "$file"
   return 1
 }
 
-# Convert line endings of staged and unstaged files in current git repo.
 git_fix_eol() {
   command -v dos2unix >/dev/null 2>&1 || {
     echo "dos2unix is not installed."
+    return 1
+  }
+  command -v git >/dev/null 2>&1 || {
+    echo "git is not installed."
     return 1
   }
 
@@ -157,7 +167,6 @@ git_fix_eol() {
   [[ "$failed" -eq 0 ]]
 }
 
-# Convert files matching a glob pattern while skipping dependency and hidden directories.
 convert_tree_eol() {
   command -v dos2unix >/dev/null 2>&1 || {
     echo "dos2unix is not installed."
@@ -186,8 +195,11 @@ convert_tree_eol() {
   [[ "$failed" -eq 0 ]]
 }
 
-# Delete merged local branches except protected ones.
 git_clean_merged_branches() {
+  command -v git >/dev/null 2>&1 || {
+    echo "git is not installed."
+    return 1
+  }
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     echo "Not inside a git repository."
     return 1
@@ -201,22 +213,21 @@ git_clean_merged_branches() {
       main|master|develop) continue ;;
     esac
 
-    if git branch -d "$branch"; then
+    if git branch -d -- "$branch"; then
       deleted=1
     fi
-  done < <(git branch --merged | sed 's/^[* ]*//')
+  done < <(git branch --format='%(refname:short)' --merged)
 
   [[ "$deleted" -eq 1 ]] || echo "No merged branches to delete."
 }
 
-# Create a directory and cd into it.
 mkcd() {
   [[ $# -eq 1 ]] || {
     echo "Usage: mkcd <dir>"
     return 1
   }
 
-  mkdir -p "$1" && cd "$1"
+  mkdir -p -- "$1" && cd -- "$1"
 }
 # <<< scriptomatic-utils <<<
 EOF
