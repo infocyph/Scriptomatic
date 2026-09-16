@@ -66,8 +66,8 @@ reload_target() {
         return 0
         ;;
       3)
-        log "$label container '$name' exists but is not running"
-        return 1
+        log "$label container '$name' is not running; skipping"
+        return 0
         ;;
       *)
         return "$rc"
