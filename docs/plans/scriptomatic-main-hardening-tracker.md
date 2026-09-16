@@ -33,7 +33,7 @@ main @ 261397d3271cda5a6c186a64f8239bd3205fcf93
 | Batch | Phases | Status |
 |---|---|---|
 | Batch 1 | 1–3 | **Complete** |
-| Batch 2 | 4–6 | Pending |
+| Batch 2 | 4–6 | **Complete** |
 | Batch 3 | 7–9 | Pending |
 
 ---
@@ -42,50 +42,14 @@ main @ 261397d3271cda5a6c186a64f8239bd3205fcf93
 
 Status: **Complete**
 
-## Documentation
+- [x] Root README, script contracts and security review added.
+- [x] Canonical direct-`main` distribution policy documented.
+- [x] Permanent assertion, static, smoke and security test framework added.
+- [x] Bash/POSIX syntax validation, executable-mode validation and ShellCheck error gate added.
+- [x] Permanent GitHub Actions jobs added using `actions/checkout@v7`.
+- [x] PHP, Node, entrypoint, utility/server baseline, security and aggregate CI gate established.
 
-- [x] Add/normalize root `README.md`.
-- [x] Add `docs/script-contracts.md`.
-- [x] Add `docs/security-review.md`.
-- [x] Document every script's purpose, shell, invocation, dependencies, privileges and side effects.
-- [x] Document direct-`main` consumption as canonical policy.
-- [x] Document optional consumer-side commit-SHA pinning without making it mandatory.
-
-## Static validation
-
-- [x] Add `tests/lib/assert.sh`.
-- [x] Add `tests/static.sh`.
-- [x] Add `tests/smoke.sh`.
-- [x] Add `tests/security-audit.sh`.
-- [x] Classify Bash vs POSIX `sh` scripts.
-- [x] Add `bash -n` validation.
-- [x] Add `sh -n` validation where appropriate.
-- [x] Add ShellCheck policy: errors are gating; warning/info findings are handled in their owning phases when compatibility-safe.
-- [x] Add CRLF/conflict-marker/debug-leftover checks.
-- [x] Normalize and verify executable modes for all shipped scripts.
-
-## GitHub Actions
-
-- [x] Add `.github/workflows/ci.yml`.
-- [x] Use `actions/checkout@v7`.
-- [x] Add static job.
-- [x] Add utility smoke job.
-- [x] Add PHP bootstrap integration job.
-- [x] Add Node bootstrap integration job.
-- [x] Add entrypoint integration job.
-- [x] Add server-helper baseline job.
-- [x] Add security/hardening audit job.
-- [x] Add aggregate CI gate.
-
-## Gate
-
-- [x] Phase 1 CI fully green.
-
-Validated by CI run **205** on implementation head:
-
-```text
-560abc687da94f771fe27d8fbe1c05ec498092ac
-```
+Validated in Batch 1 CI.
 
 ---
 
@@ -100,68 +64,19 @@ bash/php-cli-setup.sh
 bash/php-entry.sh
 ```
 
-## Regression and compatibility
-
-- [x] Add `tests/php-bootstrap.sh`.
-- [x] Add `tests/php-entry.sh`.
-- [x] Preserve username/UID/GID inputs and behavior.
-- [x] Preserve passwordless-sudo behavior used by existing consumers.
-- [x] Preserve Composer self-update behavior.
-- [x] Preserve helper names/paths and Toolset integration.
-- [x] Preserve FPM, msmtp, profile and Composer-home behavior.
-- [x] Preserve successful setup self-removal behavior.
-- [x] Preserve best-effort root-CA bootstrap and final PHP entrypoint forwarding.
-
-## Input and argv hardening
-
-- [x] Validate `USERNAME`.
-- [x] Validate `PHP_VERSION`.
-- [x] Validate `UID` / `GID`.
-- [x] Parse `LINUX_PKG` safely into argv.
-- [x] Parse `LINUX_PKG_VERSIONED` safely into argv.
-- [x] Parse `PHP_EXT` safely into argv.
-- [x] Parse `PHP_EXT_VERSIONED` safely into argv.
-- [x] Reject option/shell-control injection tokens.
-
-## Environment and network hardening
-
-- [x] Validate Alpine/PHP-image prerequisites early.
-- [x] Use private bootstrap temporary directory.
-- [x] Bound curl connect time and total time.
-- [x] Add finite retry behavior.
-- [x] Reject empty downloads.
-- [x] Syntax-check downloaded shell helpers.
-- [x] Stage helpers before atomic destination replacement.
-- [x] Normalize Scriptomatic sibling URLs from stale `master` to canonical `main`.
-- [x] Keep Toolset on its existing `main` integration policy.
-- [x] Replace direct Oh My Bash `curl | bash` execution with download + syntax validation + execution.
-- [x] Preserve PHP extension installer and Composer version policies rather than redesign them.
-
-## State and permissions
-
-- [x] Harden UID/GID/group conflicts.
-- [x] Verify resulting UID/GID/home/shell.
-- [x] Validate sudoers with `visudo`.
-- [x] Keep shared `/usr/local/bin` helper executables deterministic `root:root` / `0755`.
-- [x] Make privileged generated file replacement failure-safe where practical.
-- [x] Make FPM include additions idempotent.
-- [x] Validate PHP configuration.
-- [x] Validate PHP-FPM configuration.
-- [x] Remove broad unrelated `/tmp/*` and `/var/tmp/*` cleanup while preserving setup self-removal.
-
-## `php-entry.sh`
-
-- [x] Preserve final `exec docker-php-entrypoint "$@"` behavior.
-- [x] Harden root/sudo capability detection.
-- [x] Make root-CA stamp content-sensitive/idempotent.
-- [x] Avoid writing successful state when CA installation fails.
-- [x] Preserve best-effort/nonfatal CA semantics.
-- [x] Preserve PHP entrypoint environment rather than introducing Node-specific variables.
-
-## Gate
-
-- [x] PHP integration test green on clean `php:8.4-fpm-alpine` fixture.
-- [x] PHP entrypoint forwarding regression green.
+- [x] PHP bootstrap and entrypoint regression fixtures added.
+- [x] Username/version/UID/GID and package/extension inputs validated.
+- [x] Package and extension lists converted to argv-safe handling.
+- [x] Alpine/PHP prerequisites validated early.
+- [x] Curl operations bounded with finite retries and private staging.
+- [x] Downloaded helpers syntax-checked and installed atomically.
+- [x] Scriptomatic helper URLs normalized from stale `master` to canonical `main`.
+- [x] UID/GID/group conflicts and final identity verified.
+- [x] Sudoers validated; shared helpers kept deterministic root-owned executables.
+- [x] PHP/FPM/msmtp/profile writes hardened and made idempotent where applicable.
+- [x] Broad unrelated temporary-directory cleanup removed while successful setup self-removal remains.
+- [x] PHP root-CA bootstrap made content-aware/idempotent while remaining best-effort.
+- [x] Final `docker-php-entrypoint` exec/exit/signal behavior preserved.
 
 ---
 
@@ -175,87 +90,52 @@ Target:
 bash/node-cli-setup.sh
 ```
 
-## Regression and compatibility
-
-- [x] Add `tests/node-bootstrap.sh`.
-- [x] Preserve upstream `node` UID reuse/rename behavior.
-- [x] Cover fresh-user behavior separately.
-- [x] Preserve passwordless sudo.
-- [x] Preserve Corepack best-effort behavior.
-- [x] Preserve npm `latest` → `next` → keep-current fallback semantics.
-- [x] Preserve optional global-package behavior.
-- [x] Preserve helper paths/names and banner/alias behavior.
-- [x] Preserve setup self-removal.
-
-## Input hardening
-
-- [x] Validate `USERNAME`.
-- [x] Validate `NODE_VERSION`.
-- [x] Validate `UID` / `GID`.
-- [x] Parse Linux package lists safely into argv.
-- [x] Parse Node global package lists safely into argv.
-- [x] Validate `NODE_LOG_DIR` as a safe absolute path.
-- [x] Reject shell-control/option injection tokens.
-
-## UID/GID reuse
-
-- [x] Preserve existing UID-owner reuse/rename path.
-- [x] Fix home migration so `usermod -m` is not pointed at a pre-created destination.
-- [x] Verify final username/UID/GID/home/shell.
-- [x] Exercise existing-user/UID-reuse path in disposable `node:24-alpine` fixture.
-- [x] Exercise fresh-user creation path in the same fixture without repeating the full network bootstrap.
-
-## npm/Corepack and profile
-
-- [x] Keep Corepack behavior best-effort.
-- [x] Keep npm update/fallback semantics.
-- [x] Make optional global package invocation argv-safe.
-- [x] Preserve user npm cache/global prefix.
-- [x] Run optional global package install as the target user with explicit prefix/cache.
-- [x] Keep `.bashrc` additions idempotent.
-- [x] Preserve npm prefix/cache/PATH and Git-config profile lines.
-- [x] Fix first-time Oh My Bash replacement so the intended npm/Git profile lines survive.
-
-## Helpers
-
-- [x] Bound and validate Toolset helper downloads while retaining Toolset `main` policy.
-- [x] Normalize Scriptomatic sibling downloads to canonical `main`.
-- [x] Stage and syntax-check downloaded helpers before install.
-- [x] Keep shared helper executables root-owned and executable.
-
-## Gate
-
-- [x] Node integration green for upstream UID-reuse path.
-- [x] Node integration green for fresh-user path.
-- [x] Node bootstrap regression tests green.
-
-Validated by CI run **205**.
+- [x] Node bootstrap regression and disposable-image integration fixture added.
+- [x] Username/version/UID/GID, package/global-package and log-path inputs validated.
+- [x] Package/global-package command construction made argv-safe.
+- [x] Upstream `node` UID-owner reuse/rename behavior preserved and verified.
+- [x] Fresh-user path covered separately.
+- [x] Home migration fixed so `usermod -m` is not pointed at a pre-created destination.
+- [x] Corepack remains best-effort and npm `latest` → `next` → current fallback remains.
+- [x] Toolset/Scriptomatic helper downloads bounded, validated and staged before install.
+- [x] Scriptomatic helper URLs use canonical `main`.
+- [x] First-time Oh My Bash replacement no longer discards intended npm/Git profile lines.
+- [x] Existing sudo, helper names, profile behavior and successful setup self-removal preserved.
 
 ---
 
 # Phase 4 — Node Entrypoint
 
-Status: **Pending**
+Status: **Complete**
 
-Target: `bash/node-entry.sh`
+Target:
 
-- [ ] Expand `tests/node-entry.sh` beyond the Batch 1 forwarding baseline.
-- [ ] Capture file-log defaults and behavior.
-- [ ] Capture dependency auto-install and package-manager selection order.
-- [ ] Capture lockfile fallback semantics.
-- [ ] Capture framework detection/dev/start/server fallbacks.
-- [ ] Preserve `NODE_CMD` trusted shell-expression behavior.
-- [ ] Preserve `NODE_KEEPALIVE_ON_FAIL` current default and behavior.
-- [ ] Harden path/log/cache handling.
-- [ ] Remove accidental duplicate process execution while preserving intended fallback order.
-- [ ] Preserve final `exec`, exit code and signal behavior.
-- [ ] Harden root-CA idempotency without changing the entrypoint contract.
+```text
+bash/node-entry.sh
+```
+
+- [x] Expanded `tests/node-entry.sh` beyond the Batch 1 forwarding baseline.
+- [x] Direct command argv forwarding and exit-code propagation tested.
+- [x] File-log behavior/default paths exercised.
+- [x] Existing dependency auto-install and package-manager selection order preserved.
+- [x] Existing pnpm/yarn/npm lockfile fallback contract retained.
+- [x] Framework detection and framework-specific final `exec` paths retained.
+- [x] Generic `dev` host/port attempt → plain `dev` fallback order retained.
+- [x] Removed accidental duplicate execution of a successful generic `dev` command.
+- [x] Generic trial path now forwards shutdown signals to its child.
+- [x] Direct-command signal forwarding verified.
+- [x] `NODE_CMD` remains a trusted shell-expression override.
+- [x] `NODE_KEEPALIVE_ON_FAIL=1` remains the default.
+- [x] npm install flags are now argv-safe rather than word-split strings.
+- [x] Log-path creation reports failures clearly.
+- [x] npm cache ownership handling avoids unnecessary privileged mutation.
+- [x] Root-CA bootstrap no longer relies on a predictable `/tmp` stamp and is content-aware/idempotent.
 
 ---
 
 # Phase 5 — Shared Developer Utilities
 
-Status: **Pending**
+Status: **Complete**
 
 Targets:
 
@@ -266,22 +146,30 @@ bash/docknotify.sh
 bash/owners.sh
 ```
 
-- [ ] Add/complete dedicated fixtures for all four utilities.
-- [ ] Preserve all current aliases and managed helper functions.
-- [ ] Harden `.bashrc` idempotency/temp replacement/ownership.
-- [ ] Preserve full banner presentation when dependencies exist.
-- [ ] Harden banner behavior for missing dependencies/non-TTY use without making presentation runtime-critical.
-- [ ] Preserve docknotify CLI/env/default best-effort semantics.
-- [ ] Validate exact notification wire framing and protocol sanitization.
-- [ ] Ensure notification token never leaks in diagnostics.
-- [ ] Replace whitespace-unsafe Git file iteration in `owners.sh`.
-- [ ] Test filenames containing spaces/shell-sensitive characters.
+- [x] Dedicated fixtures added for all four utilities.
+- [x] Existing aliases and managed utility-function block preserved.
+- [x] `.bashrc` managed-block replacement made same-directory/atomic and mode-aware.
+- [x] Repeated alias-maker execution verified idempotent.
+- [x] `dos2unix` handling keeps filenames with spaces/shell-sensitive characters intact.
+- [x] Merged-branch iteration uses structured branch output instead of presentation parsing.
+- [x] Banner retains INFOCYPH/description presentation when dependencies work.
+- [x] Banner degrades to plain output if figlet fails or presentation dependencies are unavailable.
+- [x] Non-TTY/`NO_COLOR` output avoids making ChromaCat presentation runtime-critical.
+- [x] Docknotify CLI/env/default best-effort semantics preserved.
+- [x] Docknotify protocol fields sanitize tabs/newlines/carriage returns, including the token.
+- [x] Docknotify now emits the intended newline-terminated wire frame.
+- [x] Docknotify validates host/port safely without treating host data as command syntax.
+- [x] Strict-mode send failure remains non-zero; best-effort mode remains nonfatal.
+- [x] Token leakage is regression-tested.
+- [x] `owners.sh` now uses NUL-safe tracked-file iteration.
+- [x] `owners.sh` validates Git and git-fame dependencies.
+- [x] Filenames containing spaces and shell-sensitive characters are regression-tested.
 
 ---
 
 # Phase 6 — Certbot & Mongo Helpers
 
-Status: **Pending**
+Status: **Complete**
 
 Targets:
 
@@ -291,17 +179,21 @@ bash/certbot-renew.sh
 bash/mongo-replica.sh
 ```
 
-- [ ] Add/complete Certbot integration fixture.
-- [ ] Preserve default `NGINX` / `APACHE` names and reload commands.
-- [ ] Correct Docker running-container detection.
-- [ ] Remove inappropriate TTY allocation from Certbot hook automation.
-- [ ] Preserve 12-hour renewal cadence and deploy hook.
-- [ ] Harden signal/failure diagnostics.
-- [ ] Add/complete Mongo replica fixture.
-- [ ] Preserve `rs0` and existing default member topology.
-- [ ] Add bounded readiness handling while preserving startup intent.
-- [ ] Add transparent `mongosh` compatibility where available.
-- [ ] Make already-initialized matching topology idempotent and conflicting topology diagnostic.
+- [x] Dedicated Certbot and Mongo fixtures added and wired into permanent CI.
+- [x] Default `NGINX` / `APACHE` names and reload commands preserved.
+- [x] Running-container detection now checks exact container state rather than relying on redirected `docker ps` output.
+- [x] Certbot hook no longer allocates an interactive TTY.
+- [x] Reload failures return meaningful non-zero status while absent containers are skipped cleanly.
+- [x] 12-hour renewal cadence remains the default through `CERTBOT_RENEW_INTERVAL`.
+- [x] `/usr/local/bin/reload-services` remains the default deploy hook.
+- [x] Certbot dependency/hook preflight and stop-signal handling added.
+- [x] Renewal failure diagnostics improved without changing the recurring retry model.
+- [x] `rs0` and the three existing default member hostnames/ports preserved.
+- [x] Fixed startup sleep replaced with bounded readiness probing.
+- [x] `mongosh` is preferred when available with transparent legacy `mongo` fallback.
+- [x] Matching replica topology is idempotent.
+- [x] Conflicting existing topology fails clearly instead of blindly reinitializing.
+- [x] Uninitialized topology executes the existing `rs.initiate` intent.
 
 ---
 
@@ -358,35 +250,33 @@ Status: **Pending**
 
 # Batch 1 Validation Record
 
-CI run:
+CI run: **205**  
+Implementation head: `560abc687da94f771fe27d8fbe1c05ec498092ac`  
+Result: **success**
 
-```text
-205
-https://github.com/infocyph/Scriptomatic/actions/runs/35099304812
-```
+Green jobs included static/smoke, PHP/Node integration, entrypoint/server baselines, security audit and aggregate gate.
 
-Validated implementation head:
+# Batch 2 Validation Record
 
-```text
-560abc687da94f771fe27d8fbe1c05ec498092ac
-```
-
+CI run: **220**  
+Implementation head: `d8fc9879be29220a7c8cb793b3a40c2e56283b8f`  
 Result: **success**
 
 Green jobs:
 
 - Static and shell validation
 - Utility smoke
+- Shared utility regression
 - PHP bootstrap integration
 - Node bootstrap integration
 - Entrypoint integration
-- Server helper baseline
+- Server helper integration
 - Security and hardening audit
 - CI gate
 
 Next execution point:
 
 ```text
-Batch 2 — Phases 4–6
-Phase 4 — Node Entrypoint
+Batch 3 — Phases 7–9
+Phase 7 — Full Security & Reliability Audit
 ```
