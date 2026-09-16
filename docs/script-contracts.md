@@ -1,42 +1,19 @@
 # Script Contracts
 
-This document defines the stable behavioral boundaries for Scriptomatic scripts. The primary execution environment is inside Docker containers; `infocyph/LocalDevStack` is the main downstream consumer, but its orchestration remains outside Scriptomatic.
+Scriptomatic's primary execution context is Docker containers, especially `infocyph/LocalDevStack`. The contracts below preserve the interfaces and defaults already present on `main`; hardening does not create a parallel configuration framework.
 
-## Shared source/download contract
+## Shared source selectors
 
-Scriptomatic itself follows `main` by default:
+The PHP and Node bootstrap scripts intentionally add only:
 
 ```text
 SCRIPTOMATIC_REF=main
-SCRIPTOMATIC_BASE_URL=https://raw.githubusercontent.com/infocyph/Scriptomatic
-```
-
-A reproducible consumer should set `SCRIPTOMATIC_REF` to an immutable commit SHA. Every sibling helper fetched by a bootstrap script uses that same selected ref.
-
-Toolset is consumed through its stable released artifact contract:
-
-```text
 TOOLSET_REF=2.0
-TOOLSET_RELEASE_BASE_URL=https://github.com/infocyph/Toolset/releases/download
 ```
 
-Toolset helpers are checksum-verified. Remote executable acquisition uses finite connection/operation timeouts, retry, private temporary storage, syntax validation, and atomic installation where practical.
-
-## Container-wide invariants
-
-- build/bootstrap mutation runs as root;
-- application runtime is non-root where the PHP/Node images select a developer user;
-- `/usr/local/bin` helpers stay `root:root` and mode `0755`;
-- automation does not require a TTY;
-- direct runtime commands use `exec` so exit codes/signals remain container-visible;
-- compatibility-oriented developer conveniences remain defaults where LocalDevStack historically relied on them, but have explicit opt-outs;
-- service endpoints should use Docker DNS/container/service names rather than static IP addresses;
-- root-CA refresh is content-aware and repeatable;
-- temporary data is private/owned; scripts do not broadly clear shared `/tmp` trees or delete themselves.
+Scriptomatic sibling helpers use the selected Scriptomatic ref. Toolset helpers use the stable Toolset `2.0` release and its `SHA256SUMS`.
 
 ## `php-cli-setup.sh`
-
-Purpose: build-time bootstrap for Alpine official-PHP-image layouts.
 
 Invocation:
 
@@ -44,62 +21,41 @@ Invocation:
 bash php-cli-setup.sh USERNAME PHP_VERSION
 ```
 
-Privilege: root required.
-
-Important environment:
+Existing inputs:
 
 ```text
-SCRIPTOMATIC_UID / SCRIPTOMATIC_GID
-LINUX_PKG / LINUX_PKG_VERSIONED
-PHP_EXT / PHP_EXT_VERSIONED
+UID
+GID
+LINUX_PKG
+LINUX_PKG_VERSIONED
+PHP_EXT
+PHP_EXT_VERSIONED
 MSMTP_FROM
-COMPOSER_VERSION=2.10.3
-SCRIPTOMATIC_PASSWORDLESS_SUDO=1
-SCRIPTOMATIC_OH_MY_BASH=1
-PHP_EXT_INSTALLER_VERSION / PHP_EXT_INSTALLER_SHA256
-SCRIPTOMATIC_REF / SCRIPTOMATIC_BASE_URL
-TOOLSET_REF / TOOLSET_RELEASE_BASE_URL
 ```
 
-Behavior:
+Behavior remains the established Alpine PHP development bootstrap: base packages, PHP extensions, Composer through `install-php-extensions @composer`, PHP/FPM/msmtp configuration, passwordless sudo, Oh My Bash (`lambda` + existing plugins), banner, aliases and helper tools.
 
-- validates privileged inputs and package/extension tokens before mutation;
-- requires the Alpine/PHP-image capability set rather than pretending to be distro-generic;
-- preserves Composer as a default developer tool, now pinned to `2.10.3` rather than floating through self-update;
-- permits another exact `COMPOSER_VERSION` override;
-- uses the pinned/verified PHP-extension installer;
-- installs Toolset `gitx`/`chromacat` from stable Toolset `2.0`;
-- installs Scriptomatic sibling helpers from the same `SCRIPTOMATIC_REF`;
-- generates and validates PHP/FPM configuration;
-- leaves shared executables root-owned;
-- preserves passwordless sudo and Oh My Bash as trusted-development defaults; set either flag to `0` to opt out;
-- preserves the original Oh My Bash `lambda` theme and plugin set (`git bashmarks colored-man-pages npm xterm`) while using an immutable upstream ref.
+Hardening is implementation-only: validated/array-safe inputs, bounded downloads, private temp paths, same-ref Scriptomatic helpers, Toolset `2.0` checksum verification, root-owned shared executables, idempotent FPM include handling and config validation. The setup no longer clears all shared `/tmp`/`/var/tmp` content or deletes itself.
 
-Exit: non-zero on invalid input, dependency/integrity failure, user/config failure, or PHP/FPM validation failure.
+There is no `COMPOSER_VERSION`, PHP-extension-installer-version, sudo-mode or Oh-My-Bash-mode public API.
 
 ## `php-entry.sh`
 
-Purpose: transparent wrapper around `docker-php-entrypoint` plus optional mounted root-CA refresh.
-
-Environment:
+Existing public CA input:
 
 ```text
 ROOTCA_PATH
-ROOTCA_DEST
-ROOTCA_REQUIRED=0|1
 ```
 
-Unchanged CA content is not reinstalled. The default remains best-effort, matching the old entrypoint behavior; `ROOTCA_REQUIRED=1` makes failure explicit. The final application path is:
+The destination remains `/usr/local/share/ca-certificates/rootCA.crt` and failure remains best-effort as before. The old `/tmp/.rootca_installed` marker is replaced by content comparison so changed CA content can refresh.
+
+Final process behavior remains:
 
 ```sh
 exec docker-php-entrypoint "$@"
 ```
 
-so exit codes/signals are preserved.
-
 ## `node-cli-setup.sh`
-
-Purpose: build-time bootstrap for Alpine official Node images.
 
 Invocation:
 
@@ -107,178 +63,118 @@ Invocation:
 bash node-cli-setup.sh USERNAME NODE_VERSION
 ```
 
-Privilege: root required.
-
-Important environment:
+Existing inputs:
 
 ```text
-SCRIPTOMATIC_UID / SCRIPTOMATIC_GID
-LINUX_PKG / LINUX_PKG_VERSIONED
-NODE_GLOBAL / NODE_GLOBAL_VERSIONED
-NPM_VERSION
-SCRIPTOMATIC_REPRODUCIBLE=0|1
+UID
+GID
+LINUX_PKG
+LINUX_PKG_VERSIONED
+NODE_GLOBAL
+NODE_GLOBAL_VERSIONED
 NODE_LOG_DIR
-SCRIPTOMATIC_PASSWORDLESS_SUDO=1
-SCRIPTOMATIC_OH_MY_BASH=1
-SCRIPTOMATIC_REF / SCRIPTOMATIC_BASE_URL
-TOOLSET_REF / TOOLSET_RELEASE_BASE_URL
 ```
 
-Behavior:
+Existing behavior remains: upstream UID reuse/rename when needed, passwordless sudo, Oh My Bash, npm cache/global prefix, optional global packages, and the build-time npm update:
 
-- validates package/global-package input;
-- preserves useful upstream UID reuse/rename behavior and verifies final identity/home/shell/ownership;
-- preserves sudo and Oh My Bash as the LocalDevStack developer defaults with explicit opt-outs;
-- preserves the original `lambda` Oh My Bash theme/plugin set via an immutable pinned upstream ref;
-- intentionally does **not** float npm to `latest`; unset `NPM_VERSION` keeps the npm supplied by the chosen Node image, while an exact version may be requested;
-- reproducible mode rejects unversioned requested global packages;
-- installs Toolset and sibling Scriptomatic helpers using the shared source contract;
-- leaves shared helpers root-owned.
+```text
+npm install -g npm@latest || npm install -g npm@next || true
+```
+
+Hardening validates inputs and final user identity, makes package execution argv-safe, uses same-ref Scriptomatic helpers, verifies Toolset `2.0`, and keeps shared executables root-owned. No npm-version/reproducibility/sudo/Oh-My-Bash policy API is introduced.
 
 ## `node-entry.sh`
 
-Purpose: preserve the established LocalDevStack developer-entrypoint behavior while making command selection and CA handling safer.
-
-Compatibility defaults:
+Existing inputs/defaults remain, including:
 
 ```text
 NODE_LOG_ENABLED=1
+NODE_LOG_DIR=/var/log/node-app
+NODE_ACCESS_LOG_FILE=access.log
+NODE_ERROR_LOG_FILE=error.log
 NODE_KEEPALIVE_ON_FAIL=1
-NODE_AUTO_INSTALL=1
-NODE_ALLOW_LOCKFILE_FALLBACK=1
+HOST=0.0.0.0
+PORT=3000
+NPM_AUDIT=0
+NPM_FUND=0
+NODE_CMD
+ROOTCA_PATH
 ```
 
-All four behaviors can be explicitly disabled with `0` for stricter/production-like images.
+Automatic dependency installation and existing npm/pnpm/yarn fallbacks stay automatic. No new auto-install or lockfile-fallback switches are introduced.
 
-Direct container arguments are preferred and are `exec`'d. `NODE_CMD` is a trusted shell-expression compatibility escape hatch and keeps the historical `HOSTNAME` / `NUXT_HOST` / `NUXT_PORT` environment injection.
+Concrete fixes only:
 
-When dependency installation is enabled, lockfile-strict installation is tried first and the historical mutable fallback remains enabled by default. Set `NODE_ALLOW_LOCKFILE_FALLBACK=0` to make lockfile failure strict.
-
-The generic `dev` path preserves the old two-form fallback intent but fixes the old accidental double execution of a successful dev command.
-
-When no runnable app starts, keepalive remains enabled by default for developer containers; set `NODE_KEEPALIVE_ON_FAIL=0` to fail instead.
+- root CA refresh uses content comparison instead of a stale `/tmp` stamp;
+- a successful generic `npm run dev` compatibility attempt is not run twice.
 
 ## `alias-maker.sh`
 
-Purpose: manage Scriptomatic's established alias set in the target user's `.bashrc`.
-
-Contract: alias names/semantics are preserved; repeated execution is idempotent, managed replacement is atomic, unrelated user content is preserved, and optional-tool aliases degrade cleanly.
+The aliases and helper functions remain those from `main`. Repeated execution remains supported. No new alias format/capability-selection interface is introduced.
 
 ## `banner.sh`
 
-Purpose: preserve Scriptomatic's established interactive presentation.
+The original interactive presentation is preserved:
 
-Contract:
+- `INFOCYPH` figlet layout;
+- centered content;
+- three-row description box;
+- rotating credit pool;
+- original ChromaCat box-style pool.
 
-- retains centered `INFOCYPH` figlet output;
-- retains the original three-row description box;
-- retains the full rotating credit list;
-- retains the full original ChromaCat box-style list;
-- adds graceful plain fallback when `figlet`/`chromacat` is unavailable, ChromaCat fails, output is non-TTY, or `NO_COLOR` is set;
-- presentation failure never makes shell startup fail.
-
-Hardening must not redesign the banner.
+Hardening only supplies plain fallback when `figlet`/`chromacat`/TTY styling is unavailable or `NO_COLOR` is set.
 
 ## `docknotify.sh`
 
-Purpose: best-effort LocalDevStack/container notification transport.
-
-Defaults:
+Existing environment/options and best-effort behavior remain. The real protocol record is still:
 
 ```text
-NOTIFY_HOST=SERVER_TOOLS
-NOTIFY_TCP_PORT=9901
-DOCKNOTIFY_STRICT=0
+token<TAB>timeout<TAB>urgency<TAB>source<TAB>title<TAB>body<LF>
 ```
 
-The original first-two-positional-arguments behavior is preserved; additional positional arguments remain ignored. Invalid optional timeout/urgency/length/strict tuning values fall back to the historical defaults instead of making notification fatal. Host/port validity and token protocol separators remain hard validation boundaries.
-
-Protocol fields are sanitized/capped and sent as one tab-separated line with a real trailing newline. `NOTIFY_TOKEN` is never printed in failure diagnostics. Send failure is ignored by default and becomes fatal only with `DOCKNOTIFY_STRICT=1`.
+Hardening fixes the lost trailing newline and prevents token/protocol-separator leakage without changing the normal call shape.
 
 ## `owners.sh`
 
-Purpose: repository ownership analysis.
-
-Dependencies: `git`, `git-fame`.
-
-Contract: Git path enumeration is NUL-safe internally, but the established human-facing output remains one row per file in the original shape:
+Human output remains:
 
 ```text
 filename owner1 owner2 ...
 ```
 
-No TSV header or output-format redesign is introduced. Tabs/newlines in unusual filenames are escaped only enough to keep one logical file per displayed row.
+Git filename enumeration is NUL-safe internally so spaces and unusual names are not shell-split.
 
 ## `certbot-hook.sh`
 
-Purpose: Certbot deploy hook that reloads optional web-server containers.
-
-Environment:
+The fixed targets remain:
 
 ```text
-CERTBOT_NGINX_CONTAINER=NGINX
-CERTBOT_APACHE_CONTAINER=APACHE
-CERTBOT_RELOAD_TIMEOUT_SECONDS=20
+NGINX
+APACHE
 ```
 
-Contract:
-
-- requires Docker CLI/socket access and `timeout`;
-- exact `docker container inspect` identity is used instead of substring matching;
-- absent or stopped optional targets are skipped, preserving the original “reload if running” behavior;
-- reload is non-interactive (`docker exec`, never `-t`/`-it`);
-- reload is bounded by timeout;
-- actual Docker inspection errors and reload failures propagate non-zero.
-
-An empty configured container name disables that target.
+The existing behavior is still “reload if running.” The concrete fixes are exact container inspection and non-interactive `docker exec` (no `-it`). No new Certbot configuration interface is added.
 
 ## `certbot-renew.sh`
 
-Purpose: foreground Certbot renewal service loop suitable for a container/supervisor process.
-
-Environment:
+This remains the original foreground loop:
 
 ```text
-CERTBOT_BIN=certbot
-CERTBOT_DEPLOY_HOOK=/usr/local/bin/reload-services
-CERTBOT_RENEW_INTERVAL_SECONDS=43200
-CERTBOT_RENEW_JITTER_SECONDS=0
-CERTBOT_RENEW_FAILURE_BACKOFF_SECONDS=60
-CERTBOT_RENEW_MAX_FAILURES=0
-CERTBOT_RENEW_ONCE=0
+certbot renew --quiet --deploy-hook /usr/local/bin/reload-services
+sleep 12h
 ```
 
-Contract:
-
-- `SIGTERM`/`SIGINT` interrupt sleep and stop cleanly;
-- successful cycles reset the consecutive-failure count;
-- failed cycles are diagnosed and back off;
-- the compatibility default `CERTBOT_RENEW_MAX_FAILURES=0` keeps retrying indefinitely as the old loop did;
-- setting a positive failure threshold explicitly opts into container termination after repeated failures;
-- `CERTBOT_RENEW_ONCE=1` supports deterministic one-cycle execution/testing.
+repeated indefinitely. No new interval/jitter/failure-threshold API is added.
 
 ## `mongo-replica.sh`
 
-Purpose: initialize/validate a Mongo replica set after bounded readiness.
-
-Defaults:
+The topology remains fixed exactly as on `main`:
 
 ```text
-MONGO_URI=mongodb://127.0.0.1:27017
-MONGO_RS_NAME=rs0
-MONGO_MEMBERS=mongo-primary:27017,mongo-secondary1:27017,mongo-secondary2:27017
-MONGO_READY_TIMEOUT_SECONDS=60
-MONGO_READY_INTERVAL_SECONDS=2
-MONGO_INIT_TIMEOUT_SECONDS=60
-MONGO_SHELL=
+rs0
+mongo-primary:27017
+mongo-secondary1:27017
+mongo-secondary2:27017
 ```
 
-The original `rs0`/three-member topology defaults are preserved. `mongosh` is preferred, with legacy `mongo` retained as a compatibility fallback.
-
-Hardening replaces only unsafe lifecycle behavior: fixed startup sleep becomes bounded readiness, matching existing topology is idempotent success, uninitialized topology is initiated once, and conflicting existing topology fails rather than being rewritten implicitly.
-
-## LocalDevStack boundary
-
-Scriptomatic owns script behavior. LocalDevStack owns image composition, build args, mounted files, network/service names, Docker socket exposure, notification service availability, and choosing stricter overrides when desired.
-
-The downstream handoff is documented in [`localdevstack-consumer-contract.md`](localdevstack-consumer-contract.md).
+Hardening replaces the fixed `sleep 10` with readiness polling, prefers `mongosh` with `mongo` fallback, treats an already matching topology as success, and refuses to overwrite a conflicting topology. These are lifecycle/correctness fixes, not a new Mongo configuration interface.
