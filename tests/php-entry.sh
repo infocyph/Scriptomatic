@@ -22,6 +22,14 @@ printf 'updated\n' >> "${CA_UPDATE_LOG:?}"
 EOF_CA
 chmod +x "$work/bin/update-ca-certificates"
 
+cat > "$work/bin/sudo" <<'EOF_SUDO'
+#!/usr/bin/env sh
+[ "${1:-}" = "--" ] && shift
+exec "$@"
+EOF_SUDO
+chmod +x "$work/bin/sudo"
+: > "$work/updates"
+
 export PATH="$work/bin:$PATH"
 export ROOTCA_PATH="$work/source.pem"
 export ROOTCA_DEST="$work/ca/rootCA.crt"

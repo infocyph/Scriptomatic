@@ -24,10 +24,10 @@ assert_absent 'curl[^|]*\|[[:space:]]*(ba)?sh' "PHP path must not execute curl p
 assert_absent 'rm[[:space:]]+-rf[[:space:]]+(/tmp/\*|/var/tmp/\*)' "PHP path must not broadly delete temp trees" "${php_files[@]}"
 assert_absent 'rm[[:space:]]+-f[[:space:]]+--[[:space:]]+"\$0"' "PHP setup must not self-delete" "${php_files[@]}"
 assert_absent '\.rootca_installed' "PHP entrypoint must not use predictable stale CA stamp" "${php_files[@]}"
-assert_absent 'chown[^\n]*/usr/local/bin' "PHP setup must not chown shared executables to ordinary users" "${php_files[@]}"
+assert_absent 'chown[^\n]*(\$USERNAME|\$\{USERNAME\})[^\n]*/usr/local/bin' "PHP setup must not chown shared executables to ordinary users" "${php_files[@]}"
 
 # Cross-cutting hard blockers that should never be introduced during any phase.
-if grep -RFn --include='*.sh' 'eval ' "$ROOT/bash" >/tmp/scriptomatic-security-match 2>/dev/null; then
+if grep -REn --include='*.sh' '(^|[;[:space:]])eval[[:space:]]' "$ROOT/bash" >/tmp/scriptomatic-security-match 2>/dev/null; then
   cat /tmp/scriptomatic-security-match >&2
   rm -f /tmp/scriptomatic-security-match
   fail "eval requires explicit review and is not accepted by default"

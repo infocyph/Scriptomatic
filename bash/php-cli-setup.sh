@@ -172,7 +172,9 @@ install_php_extension_installer() {
 }
 
 install_toolset_helper() {
-  local asset="$1" dest="$2" sums="$WORKDIR/toolset-SHA256SUMS" file="$WORKDIR/toolset-$asset" expected
+  local asset="$1" dest="$2"
+  local sums="$WORKDIR/toolset-SHA256SUMS"
+  local file="$WORKDIR/toolset-$asset" expected
   if [[ ! -f "$sums" ]]; then
     download "${TOOLSET_RELEASE_BASE_URL%/}/${TOOLSET_REF}/SHA256SUMS" "$sums"
   fi
