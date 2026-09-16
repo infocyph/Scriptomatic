@@ -17,7 +17,15 @@ old = "assert_absent 'chown[^\\n]*/usr/local/bin' \"PHP setup must not chown sha
 new = "assert_absent 'chown[^\\n]*(\\$USERNAME|\\$\\{USERNAME\\})[^\\n]*/usr/local/bin' \"PHP setup must not chown shared executables to ordinary users\" \"${php_files[@]}\"\n"
 if old not in s:
     raise SystemExit('security ownership anchor missing')
-p.write_text(s.replace(old, new, 1))
+s = s.replace(old, new, 1)
+
+# Match the shell builtin `eval` as a command token; do not flag command options such as mongo --eval.
+old = "if grep -RFn --include='*.sh' 'eval ' \"$ROOT/bash\" >/tmp/scriptomatic-security-match 2>/dev/null; then\n"
+new = "if grep -REn --include='*.sh' '(^|[;[:space:]])eval[[:space:]]' \"$ROOT/bash\" >/tmp/scriptomatic-security-match 2>/dev/null; then\n"
+if old not in s:
+    raise SystemExit('security eval anchor missing')
+s = s.replace(old, new, 1)
+p.write_text(s)
 
 # 3) Mock sudo in php-entry fixture so privilege transition preserves test PATH.
 p = Path('tests/php-entry.sh')
