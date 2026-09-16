@@ -2,7 +2,7 @@
 
 This document records the integration boundary between `infocyph/Scriptomatic` and `infocyph/LocalDevStack`.
 
-Scriptomatic owns reusable bootstrap/runtime script behavior. LocalDevStack owns image composition, Compose profiles, networks, service/container names, mounted files, Docker socket exposure, and whether trusted-development conveniences are enabled.
+Scriptomatic owns reusable bootstrap/runtime script behavior. LocalDevStack owns image composition, Compose profiles, networks, service/container names, mounted files, Docker socket exposure, and whether stricter overrides are enabled.
 
 ## Source selection
 
@@ -55,6 +55,8 @@ RUN apk add --no-cache bash curl ca-certificates && \
     SCRIPTOMATIC_REF="${SCRIPTOMATIC_REF}" \
     SCRIPTOMATIC_BASE_URL="${SCRIPTOMATIC_BASE_URL}" \
     TOOLSET_REF="${TOOLSET_REF}" \
+    SCRIPTOMATIC_UID="${UID}" \
+    SCRIPTOMATIC_GID="${GID}" \
     bash /usr/local/bin/cli-setup.sh "${USERNAME}" "${PHP_VERSION}"
 ```
 
@@ -73,19 +75,26 @@ SCRIPTOMATIC_GID
 
 This avoids ambiguity with Bash's readonly `UID` shell variable and makes the privileged identity boundary obvious.
 
-## Trusted development sudo / root CA
+## Trusted development defaults
 
-PHP and Node LocalDevStack runtime containers normally run as the non-root developer user. When a root CA is mounted and must be copied into the system trust store at container startup, the entrypoint needs a privilege path.
-
-For a trusted LocalDevStack developer container, build with:
+Scriptomatic was written for trusted LocalDevStack developer containers. Hardening therefore preserves these historical defaults instead of silently changing the development experience:
 
 ```text
 SCRIPTOMATIC_PASSWORDLESS_SUDO=1
+SCRIPTOMATIC_OH_MY_BASH=1
 ```
 
-If LocalDevStack does not need runtime CA mutation, leave the default `0`.
+If a particular image does not need runtime sudo/CA mutation or the Oh My Bash developer shell, explicitly set the relevant flag to `0`.
 
-`ROOTCA_REQUIRED=1` should be used only when failure to install/update the mounted CA must make container startup fail. The default remains best-effort.
+PHP also keeps Composer available by default, now pinned through:
+
+```text
+COMPOSER_VERSION=2.10.3
+```
+
+This removes the old floating self-update without removing Composer from existing builds.
+
+`ROOTCA_REQUIRED=1` should be used only when failure to install/update a mounted CA must make container startup fail. The default CA path remains best-effort.
 
 ## Shell behavior
 
@@ -99,7 +108,18 @@ sh
 sh -l
 ```
 
-The banner/profile hook is login/interactive presentation and is non-critical. Non-login `sh` is not required to source Bash-specific profile configuration. The application entrypoints do not depend on interactive shell startup.
+The existing Bash developer-shell behavior, including Oh My Bash, aliases and the Scriptomatic banner, is preserved. Presentation failure is non-critical. Non-login `sh` is not required to source Bash-specific profile configuration. Application entrypoints do not depend on interactive shell startup.
+
+## Banner behavior
+
+The banner remains part of the developer-shell identity and retains its original visual contract:
+
+- centered INFOCYPH figlet;
+- three-row description box;
+- full rotating credit set;
+- original ChromaCat box-style pool.
+
+The hardening change is fallback-only: non-TTY, `NO_COLOR`, missing `figlet`, or missing/failing `chromacat` produces readable plain output rather than redesigning the banner.
 
 ## PHP container contract
 
@@ -123,11 +143,20 @@ LocalDevStack Node images should provide:
 - Bash for `node-cli-setup.sh`;
 - the selected `NODE_VERSION` from the actual image runtime;
 - non-root runtime after setup;
-- stdout/stderr-first application logging;
-- no implicit runtime dependency installation unless `NODE_AUTO_INSTALL=1` is explicitly requested;
-- strict lockfile behavior unless `NODE_ALLOW_LOCKFILE_FALLBACK=1` is explicitly requested.
+- a writable configured Node log directory when default file logging is used.
 
-Direct container command arguments are preferred over `NODE_CMD`.
+The established Node runtime defaults remain:
+
+```text
+NODE_LOG_ENABLED=1
+NODE_KEEPALIVE_ON_FAIL=1
+NODE_AUTO_INSTALL=1
+NODE_ALLOW_LOCKFILE_FALLBACK=1
+```
+
+LocalDevStack can opt into stricter behavior by setting any of these to `0`. Direct container command arguments remain preferred over `NODE_CMD`.
+
+`NPM_VERSION` no longer floats to `latest`; unset means use the npm version supplied by the selected Node image, while an exact version may be specified when needed.
 
 ## Notification contract
 
@@ -145,7 +174,7 @@ The payload is one tab-separated newline-terminated record:
 TOKEN<TAB>TIMEOUT_MS<TAB>URGENCY<TAB>SOURCE<TAB>TITLE<TAB>BODY<LF>
 ```
 
-The notification service is optional. Application startup must not depend on it unless strict mode is explicitly enabled.
+The notification service is optional. Application startup must not depend on it unless strict mode is explicitly enabled. Optional timeout/urgency/length tuning keeps the historical permissive fallback behavior.
 
 ## Service/Docker DNS contract
 
@@ -164,23 +193,29 @@ mongo-secondary2
 
 LocalDevStack may override names, but should keep service-to-service communication on Docker DNS rather than `172.x` address assumptions.
 
-`mongo-replica.sh` separates `MONGO_URI` (where the shell connects) from `MONGO_MEMBERS` (the replica-set-advertised Docker-DNS endpoints), allowing execution either inside the primary Mongo container or from a helper container.
+`mongo-replica.sh` separates `MONGO_URI` (where the shell connects) from `MONGO_MEMBERS` (the replica-set-advertised Docker-DNS endpoints), allowing execution either inside the primary Mongo container or from another service container.
 
-## Docker socket/control-plane boundary
+Current LocalDevStack Mongo remains a single-node profile; Scriptomatic's replica defaults are therefore a reusable future/optional contract rather than something hard-coded into the current compose topology.
+
+## Certbot control behavior
 
 `certbot-hook.sh` requires Docker CLI/socket access because it reloads Nginx/Apache containers. Do not mount/expose the Docker socket to unrelated PHP/Node application containers merely for this helper.
 
-Keep Docker-control helpers in the appropriate LocalDevStack control/service container.
+The hook preserves the historical “reload if running” semantics: absent or stopped optional target containers are skipped. Exact inspection, no-TTY execution, reload timeout, and actual reload-failure reporting are hardening improvements.
+
+`certbot-renew.sh` preserves unlimited retries by default (`CERTBOT_RENEW_MAX_FAILURES=0`) while adding signal-aware shutdown and backoff/diagnostics. A positive threshold is an explicit downstream choice.
 
 ## Downstream validation checklist
 
 Before LocalDevStack adopts a new Scriptomatic commit, validate:
 
-1. PHP image builds with explicit `SCRIPTOMATIC_REF`/`TOOLSET_REF` and the configured UID/GID.
-2. Node image builds through both upstream UID-1000 reuse and any configured fresh-user path.
-3. PHP and Node runtime entrypoints propagate process exits/signals.
-4. mounted root CA refresh works under the selected sudo policy.
-5. `bash`, `sh`, and `sh -l` remain usable for their intended interactive/non-interactive roles.
-6. `docknotify` reaches `SERVER_TOOLS:9901` when the service is enabled and remains harmless when absent.
-7. Certbot/Mongo helpers use configured container/service names and Docker DNS.
-8. no LocalDevStack Dockerfile still downloads Scriptomatic from `master` or Toolset from a mutable branch.
+1. PHP image builds with explicit `SCRIPTOMATIC_REF`/`TOOLSET_REF` and configured UID/GID.
+2. Default PHP image still contains Composer, sudo-capable developer shell, Oh My Bash, aliases and the original banner presentation.
+3. Node image builds through both upstream UID-1000 reuse and any configured fresh-user path.
+4. Default Node entrypoint still logs, auto-installs/falls back, and keeps an unrunnable developer container alive; strict opt-outs also work.
+5. PHP and direct Node runtime commands propagate process exits/signals.
+6. mounted root CA refresh works under the preserved sudo policy.
+7. `bash`, `sh`, and `sh -l` remain usable for their intended roles.
+8. `docknotify` reaches `SERVER_TOOLS:9901` when enabled and remains harmless when absent.
+9. Certbot/Mongo helpers use configured container/service names and Docker DNS.
+10. no LocalDevStack Dockerfile still downloads Scriptomatic from `master` or Toolset from a mutable branch.
