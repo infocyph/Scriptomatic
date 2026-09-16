@@ -23,7 +23,7 @@ Env:
   NOTIFY_SOURCE        optional (default: HOSTNAME or 'svc')
   NOTIFY_TITLE_MAX     optional (default: 100)
   NOTIFY_BODY_MAX      optional (default: 300)
-  DOCKNOTIFY_STRICT    0 (best effort) or 1 (send failure is fatal)
+  DOCKNOTIFY_STRICT    optional (default: 0). if 1 -> exit non-zero on send failure
 EOF
   exit 2
 }
@@ -44,20 +44,21 @@ while getopts ':H:p:t:u:s:' opt; do
   esac
 done
 shift $((OPTIND - 1))
-[[ $# -eq 2 ]] || usage
+[[ $# -ge 2 ]] || usage
 
 title="$1"
 body="$2"
 
 [[ -n "$HOST" && "$HOST" != *$'\n'* && "$HOST" != *$'\r'* && "$HOST" != *$'\t'* ]] || fail_usage 'invalid host'
-[[ "$PORT" =~ ^[0-9]{1,5}$ ]] || fail_usage 'port must be numeric'
-(( PORT >= 1 && PORT <= 65535 )) || fail_usage 'port must be between 1 and 65535'
-[[ "$timeout" =~ ^[0-9]{1,6}$ ]] || fail_usage 'timeout must be numeric milliseconds'
-(( timeout >= 1 )) || fail_usage 'timeout must be positive'
-case "$urgency" in low|normal|critical) ;; *) fail_usage 'urgency must be low, normal, or critical' ;; esac
-[[ "$TITLE_MAX" =~ ^[0-9]{1,4}$ ]] && (( TITLE_MAX >= 1 )) || fail_usage 'NOTIFY_TITLE_MAX must be positive'
-[[ "$BODY_MAX" =~ ^[0-9]{1,5}$ ]] && (( BODY_MAX >= 1 )) || fail_usage 'NOTIFY_BODY_MAX must be positive'
-[[ "$STRICT" == 0 || "$STRICT" == 1 ]] || fail_usage 'DOCKNOTIFY_STRICT must be 0 or 1'
+[[ "$PORT" =~ ^[0-9]{1,5}$ ]] || fail_usage 'invalid port'
+(( PORT >= 1 && PORT <= 65535 )) || fail_usage 'port out of range'
+
+[[ "$timeout" =~ ^[0-9]{1,6}$ ]] || timeout=2500
+(( timeout >= 1 )) || timeout=2500
+case "$urgency" in low|normal|critical) ;; *) urgency=normal ;; esac
+[[ "$TITLE_MAX" =~ ^[0-9]{1,4}$ ]] && (( TITLE_MAX >= 1 )) || TITLE_MAX=100
+[[ "$BODY_MAX" =~ ^[0-9]{1,5}$ ]] && (( BODY_MAX >= 1 )) || BODY_MAX=300
+[[ "$STRICT" == 0 || "$STRICT" == 1 ]] || STRICT=0
 
 if [[ -n "$TOKEN" ]]; then
   [[ "$TOKEN" != *$'\n'* && "$TOKEN" != *$'\r'* && "$TOKEN" != *$'\t'* ]] || fail_usage 'NOTIFY_TOKEN contains a protocol separator'
@@ -84,7 +85,7 @@ command -v nc >/dev/null 2>&1 || {
   exit 127
 }
 
-# Stream the protocol record directly so command substitution cannot strip its newline.
+# Stream directly so the protocol's terminating newline is preserved.
 if ! printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$TOKEN" "$timeout" "$urgency" "$SOURCE" "$title" "$body" |
   nc -w 1 "$HOST" "$PORT" >/dev/null 2>&1; then
