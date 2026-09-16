@@ -8,14 +8,39 @@ MONGO_SECONDARY2="${MONGO_SECONDARY2_HOST:-mongo-secondary2:27017}"
 MONGO_READY_ATTEMPTS="${MONGO_READY_ATTEMPTS:-30}"
 MONGO_READY_DELAY="${MONGO_READY_DELAY:-2}"
 
-[[ "$MONGO_READY_ATTEMPTS" =~ ^[0-9]+$ && "$MONGO_READY_ATTEMPTS" -ge 1 ]] || {
-  echo "mongo-replica: invalid MONGO_READY_ATTEMPTS" >&2
+fail_input() {
+  echo "mongo-replica: $1" >&2
   exit 2
 }
-[[ "$MONGO_READY_DELAY" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
-  echo "mongo-replica: invalid MONGO_READY_DELAY" >&2
-  exit 2
+
+[[ "$REPLICA_SET_NAME" =~ ^[A-Za-z0-9._-]+$ ]] || \
+  fail_input 'invalid MONGO_REPLICA_SET_NAME'
+
+validate_member() {
+  local value="$1" label="$2" host port
+
+  if [[ "$value" =~ ^\[([0-9A-Fa-f:]+)\]:([0-9]{1,5})$ ]]; then
+    host="${BASH_REMATCH[1]}"
+    port="${BASH_REMATCH[2]}"
+    [[ -n "$host" ]] || fail_input "invalid ${label}"
+  elif [[ "$value" =~ ^([A-Za-z0-9._-]+):([0-9]{1,5})$ ]]; then
+    host="${BASH_REMATCH[1]}"
+    port="${BASH_REMATCH[2]}"
+  else
+    fail_input "invalid ${label}"
+  fi
+
+  (( port >= 1 && port <= 65535 )) || fail_input "invalid ${label} port"
 }
+
+validate_member "$MONGO_PRIMARY" MONGO_PRIMARY_HOST
+validate_member "$MONGO_SECONDARY1" MONGO_SECONDARY1_HOST
+validate_member "$MONGO_SECONDARY2" MONGO_SECONDARY2_HOST
+
+[[ "$MONGO_READY_ATTEMPTS" =~ ^[0-9]+$ && "$MONGO_READY_ATTEMPTS" -ge 1 ]] || \
+  fail_input 'invalid MONGO_READY_ATTEMPTS'
+[[ "$MONGO_READY_DELAY" =~ ^[0-9]+([.][0-9]+)?$ ]] || \
+  fail_input 'invalid MONGO_READY_DELAY'
 
 if command -v mongosh >/dev/null 2>&1; then
   MONGO_SHELL=(mongosh --quiet)
@@ -55,7 +80,11 @@ try {
     print('MATCH');
   }
 } catch (e) {
-  print('UNINITIALIZED');
+  if (e && (e.code === 94 || e.codeName === 'NotYetInitialized')) {
+    print('UNINITIALIZED');
+  } else {
+    print('ERROR:' + ((e && (e.codeName || e.code)) || 'unknown'));
+  }
 }
 " 2>/dev/null | tail -n 1)"
 
@@ -69,6 +98,10 @@ CONFLICT)
   exit 1
   ;;
 UNINITIALIZED)
+  ;;
+ERROR:*)
+  echo "mongo-replica: failed to inspect replica-set state (${state#ERROR:})" >&2
+  exit 1
   ;;
 *)
   echo "mongo-replica: unable to determine replica-set state" >&2
