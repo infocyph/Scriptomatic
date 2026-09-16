@@ -25,7 +25,6 @@ install_root_ca() {
 
   expected="$(fingerprint_ca)"
   if [ -r "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null || true)" = "$expected" ]; then
-    export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-$ROOTCA}"
     return 0
   fi
 
