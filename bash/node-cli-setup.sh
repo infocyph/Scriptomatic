@@ -189,6 +189,7 @@ install_scriptomatic_helper() {
 }
 
 install_os() {
+  printf '👉 Installing base Alpine packages…\n'
   local -a linux_pkg=() linux_pkg_versioned=()
   parse_csv "$LINUX_PKG" package linux_pkg
   parse_csv "$LINUX_PKG_VERSIONED" package linux_pkg_versioned
@@ -200,6 +201,7 @@ install_os() {
 }
 
 install_helper_scripts() {
+  printf '👉 Installing helper scripts…\n'
   install_toolset_helper gitx /usr/local/bin/gitx
   install_toolset_helper chromacat /usr/local/bin/chromacat
   install_scriptomatic_helper banner.sh /usr/local/bin/show-banner
@@ -213,6 +215,7 @@ install_helper_scripts() {
 }
 
 set_banner_hook() {
+  printf '👉 Setting global banner hook…\n'
   atomic_write /etc/profile.d/banner-hook.sh 0755 <<EOF_BANNER
 #!/bin/sh
 if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
@@ -227,6 +230,7 @@ EOF_GIT
 }
 
 create_user() {
+  printf '👉 Ensuring user %s (UID=%s, GID=%s) exists…\n' "$USERNAME" "$SCRIPTOMATIC_UID" "$SCRIPTOMATIC_GID"
   local group_name owner old_owner current_uid current_home
   group_name="$(group_by_gid "$SCRIPTOMATIC_GID" || true)"
   if [[ -z "$group_name" ]]; then
@@ -280,6 +284,7 @@ create_user() {
 }
 
 configure_node() {
+  printf '👉 Configuring Node tooling…\n'
   local -a globals=() versioned_globals=() all_globals=()
   parse_csv "$NODE_GLOBAL" npm-name globals
   parse_csv "$NODE_GLOBAL_VERSIONED" npm-versioned versioned_globals
@@ -318,6 +323,7 @@ configure_node() {
 
 configure_oh_my_bash() {
   [[ "$SCRIPTOMATIC_OH_MY_BASH" == 1 ]] || return 0
+  printf '👉 Configuring Oh My Bash for %s…\n' "$USERNAME"
   command -v git >/dev/null 2>&1 || fatal "git is required for Oh My Bash"
 
   if [[ ! -d "$HOME_DIR/.oh-my-bash" ]]; then
@@ -349,6 +355,7 @@ configure_oh_my_bash() {
 add_banner_snippet() {
   [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
   if ! line_in_file 'show-banner "Node' "$BASHRC"; then
+    printf '👉 Adding banner snippet to .bashrc…\n'
     cat >> "$BASHRC" <<EOF_BASHRC
 
 if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
@@ -361,6 +368,7 @@ EOF_BASHRC
 }
 
 run_alias_maker() {
+  printf '👉 Applying aliases via alias-maker…\n'
   run_as_user /usr/local/bin/alias-maker
 }
 
