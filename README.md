@@ -157,7 +157,7 @@ The script polls readiness with a bounded timeout, initializes only an uninitial
 
 Normal LocalDevStack development may follow Scriptomatic `main`. Reproducible/rollback builds should pass an immutable commit through `SCRIPTOMATIC_REF` and propagate that same ref into the bootstrap script.
 
-LocalDevStack currently remains responsible for image composition, Docker networks/service names, mounted CA/config volumes, and choosing when trusted development conveniences are enabled. Those orchestration concerns are intentionally not hard-coded into Scriptomatic.
+LocalDevStack remains responsible for image composition, Docker networks/service names, mounted CA/config volumes, and choosing when trusted development conveniences are enabled. Those orchestration concerns are intentionally not hard-coded into Scriptomatic.
 
 ## Validation
 
@@ -171,5 +171,3 @@ Permanent CI covers:
 - Certbot/Mongo service-helper fixtures;
 - repository-wide security audit;
 - aggregate CI gate.
-
-Implementation plans under `docs/plans/` are temporary scaffolding and are deleted only after the complete hardening program and downstream consumer validation are green.
