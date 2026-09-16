@@ -7,28 +7,23 @@ USERNAME="${1:?username required}"
 PHP_VERSION="${2:?php-version required}"
 
 LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
-: "${SCRIPTOMATIC_UID:=${LEGACY_UID_ENV:-1000}}"
-: "${SCRIPTOMATIC_GID:=${GID:-1000}}"
+TARGET_UID="${LEGACY_UID_ENV:-1000}"
+TARGET_GID="${GID:-1000}"
 : "${LINUX_PKG:=}"
 : "${LINUX_PKG_VERSIONED:=}"
 : "${PHP_EXT:=}"
 : "${PHP_EXT_VERSIONED:=}"
 : "${MSMTP_FROM:=dev@localhost}"
-: "${COMPOSER_VERSION:=2.10.3}"
 : "${SCRIPTOMATIC_REF:=main}"
-: "${SCRIPTOMATIC_BASE_URL:=https://raw.githubusercontent.com/infocyph/Scriptomatic}"
 : "${TOOLSET_REF:=2.0}"
-: "${TOOLSET_RELEASE_BASE_URL:=https://github.com/infocyph/Toolset/releases/download}"
-: "${PHP_EXT_INSTALLER_VERSION:=2.11.12}"
-: "${PHP_EXT_INSTALLER_SHA256:=7c133ae4b9490d912287188c62ea570729cfa74f0ea357e4be672ce696b4aa29}"
-: "${PHP_EXT_INSTALLER_BASE_URL:=https://github.com/mlocati/docker-php-extension-installer/releases/download}"
-: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"
-: "${SCRIPTOMATIC_OH_MY_BASH:=1}"
-: "${OHMYBASH_REF:=abf846186ab0a8a41ec5888e827ece6277dfe446}"
-: "${OHMYBASH_REPO_URL:=https://github.com/ohmybash/oh-my-bash.git}"
-: "${DOWNLOAD_CONNECT_TIMEOUT:=5}"
-: "${DOWNLOAD_MAX_TIME:=90}"
-: "${DOWNLOAD_ATTEMPTS:=4}"
+
+SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic"
+TOOLSET_RELEASE_BASE_URL="https://github.com/infocyph/Toolset/releases/download"
+IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
+OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
+DOWNLOAD_CONNECT_TIMEOUT=5
+DOWNLOAD_MAX_TIME=90
+DOWNLOAD_ATTEMPTS=4
 
 HOME_DIR="/home/${USERNAME}"
 BASHRC="${HOME_DIR}/.bashrc"
@@ -60,10 +55,6 @@ validate_uint() {
   [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 && value <= 2147483647 )) || fatal "$name must be a positive integer"
 }
 
-validate_flag() {
-  local name="$1" value="$2"
-  [[ "$value" == 0 || "$value" == 1 ]] || fatal "$name must be 0 or 1"
-}
 
 parse_csv() {
   local input="$1" kind="$2" out_name="$3"
@@ -93,20 +84,12 @@ parse_csv() {
 validate_inputs() {
   [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}\$?$ ]] || fatal "invalid Linux username: $USERNAME"
   [[ "$PHP_VERSION" =~ ^[0-9]+\.[0-9]+([.][0-9]+)?([_-][A-Za-z0-9._-]+)?$ ]] || fatal "invalid PHP version: $PHP_VERSION"
-  validate_uint SCRIPTOMATIC_UID "$SCRIPTOMATIC_UID"
-  validate_uint SCRIPTOMATIC_GID "$SCRIPTOMATIC_GID"
-  validate_flag SCRIPTOMATIC_PASSWORDLESS_SUDO "$SCRIPTOMATIC_PASSWORDLESS_SUDO"
-  validate_flag SCRIPTOMATIC_OH_MY_BASH "$SCRIPTOMATIC_OH_MY_BASH"
+  validate_uint TARGET_UID "$TARGET_UID"
+  validate_uint TARGET_GID "$TARGET_GID"
   [[ "$MSMTP_FROM" != *$'\n'* && "$MSMTP_FROM" != *$'\r'* ]] || fatal "MSMTP_FROM must be one line"
   [[ "$MSMTP_FROM" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]] || fatal "invalid MSMTP_FROM address"
   [[ "$SCRIPTOMATIC_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || fatal "invalid SCRIPTOMATIC_REF"
   [[ "$TOOLSET_REF" =~ ^[A-Za-z0-9._-]+$ ]] || fatal "invalid TOOLSET_REF"
-  [[ "$PHP_EXT_INSTALLER_VERSION" =~ ^[0-9]+([.][0-9]+){2}$ ]] || fatal "invalid PHP_EXT_INSTALLER_VERSION"
-  [[ "$PHP_EXT_INSTALLER_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || fatal "invalid PHP_EXT_INSTALLER_SHA256"
-  [[ -z "$COMPOSER_VERSION" || "$COMPOSER_VERSION" =~ ^[0-9]+([.][0-9]+){1,3}([.-][A-Za-z0-9._-]+)?$ ]] || fatal "invalid COMPOSER_VERSION"
-  validate_uint DOWNLOAD_CONNECT_TIMEOUT "$DOWNLOAD_CONNECT_TIMEOUT"
-  validate_uint DOWNLOAD_MAX_TIME "$DOWNLOAD_MAX_TIME"
-  validate_uint DOWNLOAD_ATTEMPTS "$DOWNLOAD_ATTEMPTS"
 }
 
 require_capabilities() {
@@ -163,9 +146,7 @@ run_as_user() { sudo -u "$USERNAME" -H -- "$@"; }
 
 install_php_extension_installer() {
   local source="$WORKDIR/install-php-extensions"
-  local url="${PHP_EXT_INSTALLER_BASE_URL%/}/${PHP_EXT_INSTALLER_VERSION}/install-php-extensions"
-  download "$url" "$source"
-  verify_sha256 "$source" "${PHP_EXT_INSTALLER_SHA256,,}"
+  download "$IPE_URL" "$source"
   bash -n "$source"
   chmod 0755 "$source"
   printf '%s' "$source"
@@ -213,18 +194,9 @@ install_os_and_php() {
   update-ca-certificates >/dev/null 2>&1 || true
 
   extensions=("${php_ext[@]}" "${php_ext_versioned[@]}")
-  if (( ${#extensions[@]} > 0 )) || [[ -n "$COMPOSER_VERSION" ]]; then
-    local installer
-    installer="$(install_php_extension_installer)"
-    if (( ${#extensions[@]} > 0 )); then
-      "$installer" "${extensions[@]}"
-    fi
-    if [[ -n "$COMPOSER_VERSION" ]]; then
-      "$installer" "@composer-${COMPOSER_VERSION}"
-    fi
-  elif ! command -v composer >/dev/null 2>&1; then
-    printf 'php-cli-setup: composer is not present; set COMPOSER_VERSION to install an exact version\n' >&2
-  fi
+  local installer
+  installer="$(install_php_extension_installer)"
+  "$installer" @composer "${extensions[@]}"
 
   if [[ -f /usr/local/etc/php-fpm.d/zz-docker.conf ]]; then
     sed -i 's|^listen = .*|listen = 0.0.0.0:9000|' /usr/local/etc/php-fpm.d/zz-docker.conf
@@ -315,61 +287,46 @@ EOF_GIT
 }
 
 create_user() {
-  printf '👉 Ensuring user %s (UID=%s, GID=%s) exists…\n' "$USERNAME" "$SCRIPTOMATIC_UID" "$SCRIPTOMATIC_GID"
+  printf '👉 Ensuring user %s (UID=%s, GID=%s) exists…\n' "$USERNAME" "$TARGET_UID" "$TARGET_GID"
   local group_name
-  if getent group "$SCRIPTOMATIC_GID" >/dev/null 2>&1; then
-    group_name="$(getent group "$SCRIPTOMATIC_GID" | cut -d: -f1)"
+  if getent group "$TARGET_GID" >/dev/null 2>&1; then
+    group_name="$(getent group "$TARGET_GID" | cut -d: -f1)"
   else
-    addgroup -g "$SCRIPTOMATIC_GID" "$USERNAME"
+    addgroup -g "$TARGET_GID" "$USERNAME"
     group_name="$USERNAME"
   fi
 
   if ! user_exists "$USERNAME"; then
-    adduser -D -u "$SCRIPTOMATIC_UID" -G "$group_name" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
+    adduser -D -u "$TARGET_UID" -G "$group_name" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
   fi
 
-  if [[ "$SCRIPTOMATIC_PASSWORDLESS_SUDO" == 1 ]]; then
-    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$USERNAME" > "/etc/sudoers.d/${USERNAME}"
-    chmod 0440 "/etc/sudoers.d/${USERNAME}"
-  else
-    rm -f -- "/etc/sudoers.d/${USERNAME}"
-  fi
+  printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$USERNAME" > "/etc/sudoers.d/${USERNAME}"
+  chmod 0440 "/etc/sudoers.d/${USERNAME}"
 
   mkdir -p "${COMPOSER_HOME_VERSIONED}/vendor" /var/log/php-fpm "$DOMAINS_DIR" "$SOCK_DIR"
   : > "${DOMAINS_DIR}/00-empty.conf"
   chmod 0644 "${DOMAINS_DIR}/00-empty.conf"
-  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "${HOME_DIR}/.composer" "$SOCK_DIR" /var/log/php-fpm
+  chown -R "$TARGET_UID:$TARGET_GID" "${HOME_DIR}/.composer" "$SOCK_DIR" /var/log/php-fpm
   chmod 0755 "$DOMAINS_DIR" "$SOCK_DIR" /var/log/php-fpm
 }
 
 configure_oh_my_bash() {
-  [[ "$SCRIPTOMATIC_OH_MY_BASH" == 1 ]] || return 0
   printf '👉 Configuring Oh My Bash for %s…\n' "$USERNAME"
-  [[ -d "${HOME_DIR}/.oh-my-bash" ]] && return 0
-  command -v git >/dev/null 2>&1 || fatal "git is required for Oh My Bash"
 
-  local clone_dir="$WORKDIR/oh-my-bash"
-  git clone --quiet --no-checkout "$OHMYBASH_REPO_URL" "$clone_dir"
-  git -C "$clone_dir" checkout --quiet --detach "$OHMYBASH_REF"
-  rm -rf -- "$clone_dir/.git"
-  mv -- "$clone_dir" "${HOME_DIR}/.oh-my-bash"
-  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "${HOME_DIR}/.oh-my-bash"
+  if [[ ! -d "${HOME_DIR}/.oh-my-bash" ]]; then
+    local installer="$WORKDIR/oh-my-bash-install.sh"
+    download "$OHMB_URL" "$installer"
+    bash -n "$installer"
+    run_as_user bash -s -- --unattended < "$installer"
+  fi
 
   [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
-  if [[ -f "${HOME_DIR}/.oh-my-bash/templates/bashrc.osh-template" && ! -s "$BASHRC" ]]; then
-    run_as_user cp "${HOME_DIR}/.oh-my-bash/templates/bashrc.osh-template" "$BASHRC"
-  fi
-
-  sed -i \
-    -e 's/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/' \
-    -e 's/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/' \
-    "$BASHRC" || true
-
-  if grep -qE '^[[:space:]]*plugins=\(' "$BASHRC"; then
-    sed -i 's/^[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/' "$BASHRC"
-  else
-    printf '\nplugins=(git bashmarks colored-man-pages npm xterm)\n' >> "$BASHRC"
-  fi
+  sed -i '
+    s/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/
+    s/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/
+    s/^[[:space:]]*#\?[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/
+    /^[[:space:]]*#\?[[:space:]]*plugins=([[:space:]]*$/,/^[[:space:]]*)[[:space:]]*$/c\plugins=(git bashmarks colored-man-pages npm xterm)
+  ' "$BASHRC" || true
 }
 
 add_banner_snippet() {
@@ -384,7 +341,7 @@ if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
 fi
 EOF_BASHRC
   fi
-  chown "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$BASHRC"
+  chown "$TARGET_UID:$TARGET_GID" "$BASHRC"
 }
 
 run_alias_maker() {

@@ -9,15 +9,11 @@ APP_DIR="${APP_DIR:-/app}"
 : "${NODE_ACCESS_LOG:=${NODE_LOG_DIR}/${NODE_ACCESS_LOG_FILE}}"
 : "${NODE_ERROR_LOG:=${NODE_LOG_DIR}/${NODE_ERROR_LOG_FILE}}"
 : "${NODE_KEEPALIVE_ON_FAIL:=1}"
-: "${NODE_AUTO_INSTALL:=1}"
-: "${NODE_ALLOW_LOCKFILE_FALLBACK:=1}"
 : "${HOST:=0.0.0.0}"
 : "${PORT:=3000}"
 : "${NPM_AUDIT:=0}"
 : "${NPM_FUND:=0}"
 : "${ROOTCA_PATH:=/etc/share/rootCA/rootCA.pem}"
-: "${ROOTCA_DEST:=/usr/local/share/ca-certificates/rootCA.crt}"
-: "${ROOTCA_REQUIRED:=0}"
 
 warn() {
   printf '[node-entry] %s\n' "$*" >&2
@@ -32,11 +28,8 @@ validate_flag() {
 
 validate_flag NODE_LOG_ENABLED "$NODE_LOG_ENABLED"
 validate_flag NODE_KEEPALIVE_ON_FAIL "$NODE_KEEPALIVE_ON_FAIL"
-validate_flag NODE_AUTO_INSTALL "$NODE_AUTO_INSTALL"
-validate_flag NODE_ALLOW_LOCKFILE_FALLBACK "$NODE_ALLOW_LOCKFILE_FALLBACK"
 validate_flag NPM_AUDIT "$NPM_AUDIT"
 validate_flag NPM_FUND "$NPM_FUND"
-validate_flag ROOTCA_REQUIRED "$ROOTCA_REQUIRED"
 
 case "$PORT" in
   ''|*[!0-9]*) warn "PORT must be numeric"; exit 2 ;;
@@ -87,23 +80,21 @@ install_root_ca_if_changed() {
   src_hash="$(sha256_file "$ROOTCA_PATH" 2>/dev/null || true)"
   [ -n "$src_hash" ] || {
     warn "cannot hash ROOTCA; sha256sum or openssl is required"
-    [ "$ROOTCA_REQUIRED" = 1 ] && return 1
     return 0
   }
 
   dst_hash=""
-  [ ! -r "$ROOTCA_DEST" ] || dst_hash="$(sha256_file "$ROOTCA_DEST" 2>/dev/null || true)"
+  [ ! -r "/usr/local/share/ca-certificates/rootCA.crt" ] || dst_hash="$(sha256_file "/usr/local/share/ca-certificates/rootCA.crt" 2>/dev/null || true)"
   [ "$src_hash" != "$dst_hash" ] || return 0
 
-  if ! run_privileged install -m 0644 "$ROOTCA_PATH" "$ROOTCA_DEST"; then
-    warn "unable to install ROOTCA at $ROOTCA_DEST"
-    [ "$ROOTCA_REQUIRED" = 1 ] && return 1
+  if ! run_privileged install -m 0644 "$ROOTCA_PATH" "/usr/local/share/ca-certificates/rootCA.crt"; then
+    warn "unable to install ROOTCA at /usr/local/share/ca-certificates/rootCA.crt"
     return 0
   fi
 
   if has_cmd update-ca-certificates && ! run_privileged update-ca-certificates >/dev/null 2>&1; then
     warn "update-ca-certificates failed"
-    [ "$ROOTCA_REQUIRED" = 1 ] && return 1
+    :
   fi
 }
 
@@ -163,7 +154,6 @@ npm_install_flags() {
 }
 
 install_deps() {
-  [ "$NODE_AUTO_INSTALL" = 1 ] || return 0
   [ -f package.json ] || return 0
   [ -d node_modules ] && return 0
 
@@ -175,7 +165,6 @@ install_deps() {
       return 1
     }
     if pnpm install --frozen-lockfile; then return 0; fi
-    [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
     warn "strict pnpm install failed; trying compatibility fallback"
     pnpm install
     return
@@ -187,7 +176,6 @@ install_deps() {
       return 1
     }
     if yarn install --frozen-lockfile; then return 0; fi
-    [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
     warn "strict yarn install failed; trying compatibility fallback"
     yarn install
     return
@@ -197,7 +185,6 @@ install_deps() {
   if [ -f package-lock.json ]; then
     # shellcheck disable=SC2086 # internally constructed fixed npm flags.
     if npm ci $flags; then return 0; fi
-    [ "$NODE_ALLOW_LOCKFILE_FALLBACK" = 1 ] || return 1
     warn "npm ci failed; trying compatibility fallback"
     # shellcheck disable=SC2086
     npm install $flags

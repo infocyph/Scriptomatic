@@ -7,26 +7,22 @@ USERNAME="${1:?username required}"
 NODE_VERSION="${2:?node-version required}"
 
 LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
-: "${SCRIPTOMATIC_UID:=${LEGACY_UID_ENV:-1000}}"
-: "${SCRIPTOMATIC_GID:=${GID:-1000}}"
+TARGET_UID="${LEGACY_UID_ENV:-1000}"
+TARGET_GID="${GID:-1000}"
 : "${LINUX_PKG:=}"
 : "${LINUX_PKG_VERSIONED:=}"
 : "${NODE_GLOBAL:=}"
 : "${NODE_GLOBAL_VERSIONED:=}"
 : "${NODE_LOG_DIR:=/var/log/node-app}"
-: "${NPM_VERSION:=}"
-: "${SCRIPTOMATIC_REPRODUCIBLE:=0}"
 : "${SCRIPTOMATIC_REF:=main}"
-: "${SCRIPTOMATIC_BASE_URL:=https://raw.githubusercontent.com/infocyph/Scriptomatic}"
 : "${TOOLSET_REF:=2.0}"
-: "${TOOLSET_RELEASE_BASE_URL:=https://github.com/infocyph/Toolset/releases/download}"
-: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"
-: "${SCRIPTOMATIC_OH_MY_BASH:=1}"
-: "${OHMYBASH_REF:=abf846186ab0a8a41ec5888e827ece6277dfe446}"
-: "${OHMYBASH_REPO_URL:=https://github.com/ohmybash/oh-my-bash.git}"
-: "${DOWNLOAD_CONNECT_TIMEOUT:=5}"
-: "${DOWNLOAD_MAX_TIME:=90}"
-: "${DOWNLOAD_ATTEMPTS:=4}"
+
+SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic"
+TOOLSET_RELEASE_BASE_URL="https://github.com/infocyph/Toolset/releases/download"
+OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
+DOWNLOAD_CONNECT_TIMEOUT=5
+DOWNLOAD_MAX_TIME=90
+DOWNLOAD_ATTEMPTS=4
 
 HOME_DIR="/home/${USERNAME}"
 BASHRC="${HOME_DIR}/.bashrc"
@@ -54,10 +50,6 @@ validate_uint() {
   [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 && value <= 2147483647 )) || fatal "$name must be a positive integer"
 }
 
-validate_flag() {
-  local name="$1" value="$2"
-  [[ "$value" == 0 || "$value" == 1 ]] || fatal "$name must be 0 or 1"
-}
 
 parse_csv() {
   local input="$1" kind="$2" out_name="$3"
@@ -75,16 +67,8 @@ parse_csv() {
       package)
         [[ "$token" =~ ^[A-Za-z0-9._+@:=\<\>~-]+$ ]] || fatal "unsafe package token: $token"
         ;;
-      npm-name)
-        [[ "$token" =~ ^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+$ ]] || fatal "unsafe npm package name: $token"
-        ;;
-      npm-versioned)
-        if [[ "$token" =~ ^[A-Za-z0-9._-]+@[0-9]+([.][0-9]+){0,3}(-[A-Za-z0-9._-]+)?$ ]] ||
-           [[ "$token" =~ ^@[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9]+([.][0-9]+){0,3}(-[A-Za-z0-9._-]+)?$ ]]; then
-          :
-        else
-          fatal "NODE_GLOBAL_VERSIONED requires an exact package version: $token"
-        fi
+      npm)
+        [[ "$token" != -* && "$token" =~ ^[^[:space:]]+$ ]] || fatal "unsafe npm package token: $token"
         ;;
       *) fatal "internal error: unknown CSV kind $kind" ;;
     esac
@@ -95,18 +79,11 @@ parse_csv() {
 validate_inputs() {
   [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}\$?$ ]] || fatal "invalid Linux username: $USERNAME"
   [[ "$NODE_VERSION" =~ ^[0-9]+([.][0-9]+){0,2}([_-][A-Za-z0-9._-]+)?$ ]] || fatal "invalid Node version: $NODE_VERSION"
-  validate_uint SCRIPTOMATIC_UID "$SCRIPTOMATIC_UID"
-  validate_uint SCRIPTOMATIC_GID "$SCRIPTOMATIC_GID"
-  validate_flag SCRIPTOMATIC_REPRODUCIBLE "$SCRIPTOMATIC_REPRODUCIBLE"
-  validate_flag SCRIPTOMATIC_PASSWORDLESS_SUDO "$SCRIPTOMATIC_PASSWORDLESS_SUDO"
-  validate_flag SCRIPTOMATIC_OH_MY_BASH "$SCRIPTOMATIC_OH_MY_BASH"
-  [[ -z "$NPM_VERSION" || "$NPM_VERSION" =~ ^[0-9]+([.][0-9]+){1,3}(-[A-Za-z0-9._-]+)?$ ]] || fatal "NPM_VERSION must be an exact numeric version"
+  validate_uint TARGET_UID "$TARGET_UID"
+  validate_uint TARGET_GID "$TARGET_GID"
   [[ "$NODE_LOG_DIR" == /* && "$NODE_LOG_DIR" != *$'\n'* && "$NODE_LOG_DIR" != *$'\r'* ]] || fatal "NODE_LOG_DIR must be an absolute one-line path"
   [[ "$SCRIPTOMATIC_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || fatal "invalid SCRIPTOMATIC_REF"
   [[ "$TOOLSET_REF" =~ ^[A-Za-z0-9._-]+$ ]] || fatal "invalid TOOLSET_REF"
-  validate_uint DOWNLOAD_CONNECT_TIMEOUT "$DOWNLOAD_CONNECT_TIMEOUT"
-  validate_uint DOWNLOAD_MAX_TIME "$DOWNLOAD_MAX_TIME"
-  validate_uint DOWNLOAD_ATTEMPTS "$DOWNLOAD_ATTEMPTS"
 }
 
 require_capabilities() {
@@ -230,30 +207,30 @@ EOF_GIT
 }
 
 create_user() {
-  printf '👉 Ensuring user %s (UID=%s, GID=%s) exists…\n' "$USERNAME" "$SCRIPTOMATIC_UID" "$SCRIPTOMATIC_GID"
+  printf '👉 Ensuring user %s (UID=%s, GID=%s) exists…\n' "$USERNAME" "$TARGET_UID" "$TARGET_GID"
   local group_name owner old_owner current_uid current_home
-  group_name="$(group_by_gid "$SCRIPTOMATIC_GID" || true)"
+  group_name="$(group_by_gid "$TARGET_GID" || true)"
   if [[ -z "$group_name" ]]; then
-    addgroup -g "$SCRIPTOMATIC_GID" "$USERNAME"
+    addgroup -g "$TARGET_GID" "$USERNAME"
     group_name="$USERNAME"
   fi
 
   if user_exists "$USERNAME"; then
     current_uid="$(getent passwd "$USERNAME" | cut -d: -f3)"
-    [[ "$current_uid" == "$SCRIPTOMATIC_UID" ]] || fatal "existing user $USERNAME has UID $current_uid, expected $SCRIPTOMATIC_UID"
+    [[ "$current_uid" == "$TARGET_UID" ]] || fatal "existing user $USERNAME has UID $current_uid, expected $TARGET_UID"
   else
-    owner="$(user_by_uid "$SCRIPTOMATIC_UID" || true)"
+    owner="$(user_by_uid "$TARGET_UID" || true)"
     if [[ -n "$owner" ]]; then
       old_owner="$owner"
       if [[ "$old_owner" != "$USERNAME" ]] && getent group "$old_owner" >/dev/null 2>&1; then
-        if [[ "$(getent group "$old_owner" | cut -d: -f3)" == "$SCRIPTOMATIC_GID" ]] && ! getent group "$USERNAME" >/dev/null 2>&1; then
+        if [[ "$(getent group "$old_owner" | cut -d: -f3)" == "$TARGET_GID" ]] && ! getent group "$USERNAME" >/dev/null 2>&1; then
           groupmod -n "$USERNAME" "$old_owner"
           group_name="$USERNAME"
         fi
       fi
       usermod -l "$USERNAME" "$old_owner"
     else
-      adduser -D -u "$SCRIPTOMATIC_UID" -G "$group_name" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
+      adduser -D -u "$TARGET_UID" -G "$group_name" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
     fi
   fi
 
@@ -267,35 +244,26 @@ create_user() {
   local passwd_line final_uid final_gid final_home final_shell
   passwd_line="$(getent passwd "$USERNAME")"
   IFS=: read -r _ _ final_uid final_gid _ final_home final_shell <<< "$passwd_line"
-  [[ "$final_uid" == "$SCRIPTOMATIC_UID" ]] || fatal "final UID mismatch for $USERNAME"
-  [[ "$final_gid" == "$SCRIPTOMATIC_GID" ]] || fatal "final GID mismatch for $USERNAME"
+  [[ "$final_uid" == "$TARGET_UID" ]] || fatal "final UID mismatch for $USERNAME"
+  [[ "$final_gid" == "$TARGET_GID" ]] || fatal "final GID mismatch for $USERNAME"
   [[ "$final_home" == "$HOME_DIR" ]] || fatal "final home mismatch for $USERNAME"
   [[ "$final_shell" == /bin/bash ]] || fatal "final shell mismatch for $USERNAME"
 
-  if [[ "$SCRIPTOMATIC_PASSWORDLESS_SUDO" == 1 ]]; then
-    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$USERNAME" > "/etc/sudoers.d/${USERNAME}"
-    chmod 0440 "/etc/sudoers.d/${USERNAME}"
-  else
-    rm -f -- "/etc/sudoers.d/${USERNAME}"
-  fi
+  printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$USERNAME" > "/etc/sudoers.d/${USERNAME}"
+  chmod 0440 "/etc/sudoers.d/${USERNAME}"
 
   mkdir -p "$HOME_DIR/.npm" "$HOME_DIR/.cache" "$HOME_DIR/.npm-global" "$NODE_LOG_DIR"
-  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$HOME_DIR" "$NODE_LOG_DIR"
+  chown -R "$TARGET_UID:$TARGET_GID" "$HOME_DIR" "$NODE_LOG_DIR"
 }
 
 configure_node() {
   printf '👉 Configuring Node tooling…\n'
   local -a globals=() versioned_globals=() all_globals=()
-  parse_csv "$NODE_GLOBAL" npm-name globals
-  parse_csv "$NODE_GLOBAL_VERSIONED" npm-versioned versioned_globals
-  if [[ "$SCRIPTOMATIC_REPRODUCIBLE" == 1 && ${#globals[@]} -gt 0 ]]; then
-    fatal "SCRIPTOMATIC_REPRODUCIBLE=1 requires NODE_GLOBAL_VERSIONED exact packages"
-  fi
-
-  if [[ -n "$NPM_VERSION" ]]; then
-    npm install -g -- "npm@${NPM_VERSION}"
-    [[ "$(npm --version)" == "$NPM_VERSION" ]] || fatal "npm version did not resolve to requested $NPM_VERSION"
-  fi
+  parse_csv "$NODE_GLOBAL" npm globals
+  parse_csv "$NODE_GLOBAL_VERSIONED" npm versioned_globals
+  printf '👉 Updating npm…
+'
+  npm install -g npm@latest || npm install -g npm@next || true
 
   if command -v corepack >/dev/null 2>&1; then
     corepack enable >/dev/null 2>&1 || printf 'node-cli-setup: corepack enable was unavailable; continuing\n' >&2
@@ -318,38 +286,26 @@ configure_node() {
       NPM_CONFIG_CACHE="$HOME_DIR/.npm" \
       npm install -g -- "${all_globals[@]}"
   fi
-  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$HOME_DIR/.npm" "$HOME_DIR/.cache" "$HOME_DIR/.npm-global"
+  chown -R "$TARGET_UID:$TARGET_GID" "$HOME_DIR/.npm" "$HOME_DIR/.cache" "$HOME_DIR/.npm-global"
 }
 
 configure_oh_my_bash() {
-  [[ "$SCRIPTOMATIC_OH_MY_BASH" == 1 ]] || return 0
   printf '👉 Configuring Oh My Bash for %s…\n' "$USERNAME"
-  command -v git >/dev/null 2>&1 || fatal "git is required for Oh My Bash"
 
-  if [[ ! -d "$HOME_DIR/.oh-my-bash" ]]; then
-    local clone_dir="$WORKDIR/oh-my-bash"
-    git clone --quiet --no-checkout "$OHMYBASH_REPO_URL" "$clone_dir"
-    git -C "$clone_dir" checkout --quiet --detach "$OHMYBASH_REF"
-    rm -rf -- "$clone_dir/.git"
-    mv -- "$clone_dir" "$HOME_DIR/.oh-my-bash"
-    chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$HOME_DIR/.oh-my-bash"
+  if [[ ! -d "${HOME_DIR}/.oh-my-bash" ]]; then
+    local installer="$WORKDIR/oh-my-bash-install.sh"
+    download "$OHMB_URL" "$installer"
+    bash -n "$installer"
+    run_as_user bash -s -- --unattended < "$installer"
   fi
 
   [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
-  if [[ -f "$HOME_DIR/.oh-my-bash/templates/bashrc.osh-template" && ! -s "$BASHRC" ]]; then
-    run_as_user cp "$HOME_DIR/.oh-my-bash/templates/bashrc.osh-template" "$BASHRC"
-  fi
-
-  sed -i \
-    -e 's/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/' \
-    -e 's/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/' \
-    "$BASHRC" || true
-
-  if grep -qE '^[[:space:]]*plugins=\(' "$BASHRC"; then
-    sed -i 's/^[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/' "$BASHRC"
-  else
-    printf '\nplugins=(git bashmarks colored-man-pages npm xterm)\n' >> "$BASHRC"
-  fi
+  sed -i '
+    s/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/
+    s/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/
+    s/^[[:space:]]*#\?[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/
+    /^[[:space:]]*#\?[[:space:]]*plugins=([[:space:]]*$/,/^[[:space:]]*)[[:space:]]*$/c\plugins=(git bashmarks colored-man-pages npm xterm)
+  ' "$BASHRC" || true
 }
 
 add_banner_snippet() {
@@ -364,7 +320,7 @@ if [ -n "\$PS1" ] && [ -z "\${BANNER_SHOWN-}" ]; then
 fi
 EOF_BASHRC
   fi
-  chown "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$BASHRC"
+  chown "$TARGET_UID:$TARGET_GID" "$BASHRC"
 }
 
 run_alias_maker() {

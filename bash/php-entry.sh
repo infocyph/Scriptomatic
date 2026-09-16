@@ -2,8 +2,6 @@
 set -eu
 
 ROOTCA="${ROOTCA_PATH:-/etc/share/rootCA/rootCA.pem}"
-ROOTCA_DEST="${ROOTCA_DEST:-/usr/local/share/ca-certificates/rootCA.crt}"
-ROOTCA_REQUIRED="${ROOTCA_REQUIRED:-0}"
 
 warn() {
   printf 'php-entry: %s\n' "$*" >&2
@@ -35,13 +33,12 @@ install_root_ca_if_changed() {
   src_hash="$(sha256_file "$ROOTCA" 2>/dev/null || true)"
   [ -n "$src_hash" ] || {
     warn "cannot hash ROOTCA; sha256sum or openssl is required"
-    [ "$ROOTCA_REQUIRED" = "1" ] && return 1
     return 0
   }
 
   dst_hash=""
-  if [ -r "$ROOTCA_DEST" ]; then
-    dst_hash="$(sha256_file "$ROOTCA_DEST" 2>/dev/null || true)"
+  if [ -r "/usr/local/share/ca-certificates/rootCA.crt" ]; then
+    dst_hash="$(sha256_file "/usr/local/share/ca-certificates/rootCA.crt" 2>/dev/null || true)"
   fi
 
   if [ "$src_hash" = "$dst_hash" ]; then
@@ -49,16 +46,15 @@ install_root_ca_if_changed() {
     return 0
   fi
 
-  if ! run_privileged install -m 0644 "$ROOTCA" "$ROOTCA_DEST"; then
-    warn "unable to install ROOTCA at $ROOTCA_DEST"
-    [ "$ROOTCA_REQUIRED" = "1" ] && return 1
+  if ! run_privileged install -m 0644 "$ROOTCA" "/usr/local/share/ca-certificates/rootCA.crt"; then
+    warn "unable to install ROOTCA at /usr/local/share/ca-certificates/rootCA.crt"
     return 0
   fi
 
   if command -v update-ca-certificates >/dev/null 2>&1; then
     if ! run_privileged update-ca-certificates >/dev/null 2>&1; then
       warn "update-ca-certificates failed"
-      [ "$ROOTCA_REQUIRED" = "1" ] && return 1
+      :
     fi
   fi
 

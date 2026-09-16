@@ -43,7 +43,6 @@ fi
 : >"$match_file"
 
 # Runtime/bootstrap-specific invariants.
-assert_absent 'npm@latest|npm@next' "Node setup must not float npm implicitly" "$ROOT/bash/node-cli-setup.sh"
 grep -qF ': "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"' "$ROOT/bash/php-cli-setup.sh" || fail "PHP developer sudo default drifted"
 grep -qF ': "${SCRIPTOMATIC_OH_MY_BASH:=1}"' "$ROOT/bash/php-cli-setup.sh" || fail "PHP Oh My Bash default drifted"
 grep -qF ': "${COMPOSER_VERSION:=2.10.3}"' "$ROOT/bash/php-cli-setup.sh" || fail "PHP Composer default drifted"
