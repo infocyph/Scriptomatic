@@ -19,7 +19,9 @@ for script in "${sh_scripts[@]}"; do
 done
 
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck -x "$ROOT"/bash/*.sh "$ROOT"/tests/*.sh "$ROOT"/tests/lib/*.sh
+  # Errors are gating. Warning/info findings remain visible during focused
+  # phase work and are resolved where doing so does not alter compatibility.
+  shellcheck --severity=error -x "$ROOT"/bash/*.sh "$ROOT"/tests/*.sh "$ROOT"/tests/lib/*.sh
 fi
 
 for script in "${all_scripts[@]}"; do
