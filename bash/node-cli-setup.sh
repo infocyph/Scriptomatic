@@ -45,10 +45,10 @@ validate_username() {
 
 validate_id() {
   local label="$1" value="$2"
-  [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 0 && value <= 2147483647 )) || {
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value < 0 || value > 2147483647 )); then
     echo "Invalid ${label}: ${value}" >&2
     return 1
-  }
+  fi
 }
 
 validate_version() {
@@ -182,9 +182,28 @@ export GIT_CONFIG_GLOBAL=/git-config/.gitconfig
 EOF_GIT
 }
 
+move_user_home() {
+  local user="$1" current_home desired_home="$2"
+  current_home="$(getent passwd "$user" | cut -d: -f6)"
+  [[ "$current_home" == "$desired_home" ]] && return 0
+
+  if [[ ! -e "$desired_home" ]]; then
+    usermod -d "$desired_home" -m "$user"
+    return 0
+  fi
+
+  # Preserve the pre-existing best-effort behavior without asking usermod to
+  # move into an already-existing directory. The target must be a directory.
+  [[ -d "$desired_home" ]] || {
+    echo "Cannot set home for $user: $desired_home exists and is not a directory" >&2
+    return 1
+  }
+  usermod -d "$desired_home" "$user"
+}
+
 create_user() {
   echo "👉 Ensuring user ${USERNAME} (UID=${UID}, GID=${GID}) exists…"
-  local grp owner current_home
+  local grp owner
   grp="$(group_by_gid "$GID" || true)"
   if [[ -z "$grp" ]]; then
     addgroup -g "$GID" "$USERNAME"
@@ -196,11 +215,7 @@ create_user() {
       echo "Existing user $USERNAME has UID $(id -u "$USERNAME"), expected $UID" >&2
       return 1
     }
-    current_home="$(getent passwd "$USERNAME" | cut -d: -f6)"
-    if [[ "$current_home" != "$HOME_DIR" ]]; then
-      mkdir -p "$HOME_DIR"
-      usermod -d "$HOME_DIR" -m "$USERNAME"
-    fi
+    move_user_home "$USERNAME" "$HOME_DIR"
     usermod -s /bin/bash -g "$grp" "$USERNAME"
   else
     owner="$(user_by_uid "$UID" || true)"
@@ -217,8 +232,8 @@ create_user() {
           fi
         fi
       fi
-      mkdir -p "$HOME_DIR"
-      usermod -d "$HOME_DIR" -m -s /bin/bash -g "$grp" "$USERNAME"
+      move_user_home "$USERNAME" "$HOME_DIR"
+      usermod -s /bin/bash -g "$grp" "$USERNAME"
     else
       adduser -D -u "$UID" -G "$grp" -h "$HOME_DIR" -s /bin/bash "$USERNAME"
     fi
