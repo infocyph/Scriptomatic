@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 path = Path('.github/scripts/scope-preservation-final.py')
 text = path.read_text()
@@ -21,5 +22,14 @@ if needle in text and insert not in text:
     text = text.replace(needle, insert, 1)
 
 text = text.replace('        "MONGO_MEMBERS", "MONGO_SHELL=",\n', '        "MONGO_MEMBERS",\n')
+
+# Do not bulk-edit permanent tests. Source is corrected first; tests are then
+# adjusted explicitly from concrete failures so test intent is preserved.
+text = re.sub(
+    r'\n# Remove tests for opt-out/policy knobs introduced during hardening\..*?\n# Guard against accidental reintroduction',
+    '\n# Guard against accidental reintroduction',
+    text,
+    flags=re.S,
+)
 
 path.write_text(text)
