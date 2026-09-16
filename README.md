@@ -14,6 +14,8 @@ https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/<script>.sh
 
 Consumers that need reproducible builds may pin a full commit SHA in the same URL shape, but Scriptomatic itself continues to support direct consumption from `main`.
 
+The permanent CI suite verifies this contract and rejects stale Scriptomatic `master` self-references, tag/release workflows, and tag-triggered publishing behavior.
+
 ## Script surface
 
 | Script | Shell | Role | Typical privilege |
@@ -30,7 +32,7 @@ Consumers that need reproducible builds may pin a full commit SHA in the same UR
 | `bash/mongo-replica.sh` | Bash | MongoDB replica-set bootstrap | MongoDB access |
 | `bash/owners.sh` | Bash | Git ownership-analysis helper | user |
 
-Detailed contracts and dependencies are documented in [`docs/script-contracts.md`](docs/script-contracts.md). Security assumptions are documented in [`docs/security-review.md`](docs/security-review.md).
+Detailed contracts and dependencies are documented in [`docs/script-contracts.md`](docs/script-contracts.md). Security assumptions are documented in [`docs/security-review.md`](docs/security-review.md). Downstream integration notes are in [`docs/downstream-compatibility.md`](docs/downstream-compatibility.md).
 
 ## PHP bootstrap
 
@@ -76,15 +78,22 @@ Run locally:
 bash tests/static.sh
 bash tests/smoke.sh
 bash tests/security-audit.sh
+bash tests/main-contract.sh
 bash tests/php-bootstrap.sh
 bash tests/php-entry.sh
 bash tests/node-bootstrap.sh
 bash tests/node-entry.sh
+bash tests/alias-maker.sh
+bash tests/banner.sh
+bash tests/docknotify.sh
+bash tests/owners.sh
 bash tests/server-baseline.sh
+bash tests/certbot.sh
+bash tests/mongo-replica.sh
 ```
 
 Set `SCRIPTOMATIC_FULL_INTEGRATION=1` for the PHP and Node bootstrap tests to exercise disposable upstream Docker images when Docker is available.
 
 ## Compatibility rule
 
-Hardening work must preserve established behavior by default. Validation, quoting, bounded network calls, safer temporary files, idempotency, clearer diagnostics, and correctness fixes are allowed. A change that necessarily alters an established external contract must be decided explicitly instead of being introduced silently.
+Hardening work preserves established behavior by default. Validation, quoting, bounded network calls, safer temporary files, idempotency, clearer diagnostics, and correctness fixes are allowed. A change that necessarily alters an established external contract must be decided explicitly instead of being introduced silently.
