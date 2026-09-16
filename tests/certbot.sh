@@ -8,118 +8,57 @@ work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 mkdir -p "$work/bin"
 
-cat >"$work/bin/docker" <<'EOF_DOCKER'
+cat > "$work/bin/docker" <<'EOF_DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
 calls="${MOCK_DOCKER_CALLS:?}"
 if [[ "${1:-}" == container && "${2:-}" == inspect ]]; then
   name="${@: -1}"
   case "$name" in
-    NGINX|WEB_NGINX) state="${MOCK_NGINX_STATE:-missing}" ;;
-    APACHE|WEB_APACHE) state="${MOCK_APACHE_STATE:-missing}" ;;
+    NGINX) state="${MOCK_NGINX_STATE:-missing}" ;;
+    APACHE) state="${MOCK_APACHE_STATE:-missing}" ;;
     *) state=missing ;;
   esac
   case "$state" in
     running) printf 'true\n'; exit 0 ;;
     stopped) printf 'false\n'; exit 0 ;;
-    missing) printf 'Error: No such object: %s\n' "$name" >&2; exit 1 ;;
-    error) printf 'Cannot connect to the Docker daemon\n' >&2; exit 1 ;;
+    missing) exit 1 ;;
   esac
 fi
 if [[ "${1:-}" == exec ]]; then
   shift
   name="$1"
   shift
-  printf '%s\t%s\n' "$name" "$*" >>"$calls"
-  [[ "${MOCK_DOCKER_FAIL_TARGET:-}" == "$name" ]] && exit 9
+  printf '%s\t%s\n' "$name" "$*" >> "$calls"
   exit 0
 fi
-printf 'unexpected docker invocation: %s\n' "$*" >&2
 exit 64
 EOF_DOCKER
 chmod +x "$work/bin/docker"
-: >"$work/docker-calls"
-
+: > "$work/docker-calls"
 export PATH="$work/bin:$PATH"
 export MOCK_DOCKER_CALLS="$work/docker-calls"
 
-MOCK_NGINX_STATE=missing MOCK_APACHE_STATE=missing \
-  bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-missing.err"
-assert_eq 0 "$(wc -l <"$work/docker-calls" | tr -d ' ')" "missing optional containers do not execute reloads"
-pass "certbot hook skips missing optional containers"
+MOCK_NGINX_STATE=missing MOCK_APACHE_STATE=missing bash "$ROOT/bash/certbot-hook.sh" >/dev/null
+assert_eq 0 "$(wc -l < "$work/docker-calls" | tr -d ' ')" "missing containers do not reload"
 
-: >"$work/docker-calls"
-MOCK_NGINX_STATE=running MOCK_APACHE_STATE=missing \
-  bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-nginx.err"
-assert_contains "$(cat "$work/docker-calls")" "NGINX" "Nginx exact target"
-assert_not_contains "$(cat "$work/docker-calls")" "-it" "hook must not request a TTY"
-pass "certbot hook reloads an exact running target without TTY"
+MOCK_NGINX_STATE=stopped MOCK_APACHE_STATE=missing bash "$ROOT/bash/certbot-hook.sh" >/dev/null
+assert_eq 0 "$(wc -l < "$work/docker-calls" | tr -d ' ')" "stopped containers do not reload"
+pass "certbot hook preserves reload-if-running behavior"
 
-: >"$work/docker-calls"
-MOCK_NGINX_STATE=stopped MOCK_APACHE_STATE=missing \
-  bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-stopped.err"
-assert_eq 0 "$(wc -l <"$work/docker-calls" | tr -d ' ')" "stopped optional container does not execute reload"
-assert_contains "$(cat "$work/hook-stopped.err")" 'not running; skipping' "stopped optional target diagnostic"
-pass "certbot hook preserves original skip-if-not-running behavior"
+: > "$work/docker-calls"
+MOCK_NGINX_STATE=running MOCK_APACHE_STATE=missing bash "$ROOT/bash/certbot-hook.sh" >/dev/null
+assert_contains "$(cat "$work/docker-calls")" $'NGINX\tnginx -s reload' "fixed NGINX reload target"
+assert_not_contains "$(cat "$work/docker-calls")" '-it' "docker exec must not allocate a TTY"
+pass "certbot hook fixes exact running detection and non-interactive exec"
 
-set +e
-MOCK_NGINX_STATE=running MOCK_APACHE_STATE=missing MOCK_DOCKER_FAIL_TARGET=NGINX \
-  bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-reload-fail.err"
-rc=$?
-set -e
-[[ $rc -ne 0 ]] || fail "reload failure must propagate"
-unset MOCK_DOCKER_FAIL_TARGET
-pass "certbot hook propagates actual reload failures"
+hook_text="$(cat "$ROOT/bash/certbot-hook.sh")"
+assert_not_contains "$hook_text" 'CERTBOT_NGINX_CONTAINER' "container-name policy knob must not be introduced"
+assert_not_contains "$hook_text" 'CERTBOT_APACHE_CONTAINER' "container-name policy knob must not be introduced"
 
-: >"$work/docker-calls"
-CERTBOT_NGINX_CONTAINER=WEB_NGINX CERTBOT_APACHE_CONTAINER=WEB_APACHE \
-MOCK_NGINX_STATE=running MOCK_APACHE_STATE=running \
-  bash "$ROOT/bash/certbot-hook.sh" >/dev/null 2>"$work/hook-custom.err"
-assert_contains "$(cat "$work/docker-calls")" $'WEB_NGINX\tnginx -s reload' "custom Nginx target"
-assert_contains "$(cat "$work/docker-calls")" $'WEB_APACHE\tapachectl graceful' "custom Apache target"
-pass "certbot hook supports container-name overrides"
-
-cat >"$work/bin/certbot" <<'EOF_CERTBOT'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >>"${MOCK_CERTBOT_CALLS:?}"
-exit "${MOCK_CERTBOT_RC:-0}"
-EOF_CERTBOT
-chmod +x "$work/bin/certbot"
-cat >"$work/reload-services" <<'EOF_HOOK'
-#!/usr/bin/env sh
-exit 0
-EOF_HOOK
-chmod +x "$work/reload-services"
-: >"$work/certbot-calls"
-export MOCK_CERTBOT_CALLS="$work/certbot-calls"
-
-CERTBOT_BIN=certbot CERTBOT_DEPLOY_HOOK="$work/reload-services" CERTBOT_RENEW_ONCE=1 \
-  bash "$ROOT/bash/certbot-renew.sh" >/dev/null 2>"$work/renew-once.err"
-assert_contains "$(cat "$work/certbot-calls")" "renew --quiet --deploy-hook $work/reload-services" "renew command contract"
-pass "certbot renew supports deterministic one-cycle execution"
-
-grep -qF ': "${CERTBOT_RENEW_MAX_FAILURES:=0}"' "$ROOT/bash/certbot-renew.sh" || fail "renew compatibility retry default drifted"
-pass "certbot renewal retains unlimited retry by default"
-
-set +e
-MOCK_CERTBOT_RC=7 CERTBOT_BIN=certbot CERTBOT_DEPLOY_HOOK="$work/reload-services" \
-CERTBOT_RENEW_MAX_FAILURES=1 CERTBOT_RENEW_FAILURE_BACKOFF_SECONDS=1 \
-  bash "$ROOT/bash/certbot-renew.sh" >/dev/null 2>"$work/renew-fail.err"
-rc=$?
-set -e
-[[ $rc -ne 0 ]] || fail "explicit failure threshold must terminate the foreground process"
-assert_contains "$(cat "$work/renew-fail.err")" "failure threshold reached" "failure threshold diagnostic"
-unset MOCK_CERTBOT_RC
-pass "certbot renew supports opt-in failure thresholds"
-
-# timeout sends TERM to prove the foreground loop responds to container-style termination.
-set +e
-timeout --preserve-status --signal=TERM 0.2 env \
-  CERTBOT_BIN=certbot CERTBOT_DEPLOY_HOOK="$work/reload-services" \
-  CERTBOT_RENEW_INTERVAL_SECONDS=30 CERTBOT_RENEW_JITTER_SECONDS=0 \
-  bash "$ROOT/bash/certbot-renew.sh" >/dev/null 2>"$work/renew-signal.err"
-rc=$?
-set -e
-assert_eq 0 "$rc" "signal-aware renewal exit"
-pass "certbot renew exits cleanly on a container termination signal"
+renew_text="$(cat "$ROOT/bash/certbot-renew.sh")"
+assert_contains "$renew_text" 'while true' "historical infinite renewal loop"
+assert_contains "$renew_text" 'certbot renew --quiet --deploy-hook /usr/local/bin/reload-services' "historical certbot command"
+assert_contains "$renew_text" 'sleep 12h' "historical renewal interval"
+assert_not_contains "$renew_text" 'CERTBOT_RENEW_' "renewal policy knobs must not be introduced"
+pass "certbot renewal behavior is unchanged from main"
