@@ -12,9 +12,9 @@ Canonical raw form:
 https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/<script>.sh
 ```
 
-Consumers that need reproducible builds may pin a full commit SHA in the same URL shape. PHP/Node bootstrap also accepts `SCRIPTOMATIC_REF=main` (default) or the same full commit SHA so every sibling Scriptomatic helper is fetched from the identical source revision.
+Consumers that need reproducible Scriptomatic builds may pin a full commit SHA in the same URL shape. PHP/Node bootstrap also accepts `SCRIPTOMATIC_REF=main` (default) or the same full commit SHA so every sibling Scriptomatic helper is fetched from the identical source revision.
 
-Toolset is a released dependency rather than a mutable branch dependency. PHP/Node bootstrap defaults to `TOOLSET_REF=2.0`, downloads the required standalone Toolset assets from that exact GitHub Release, and verifies them against the release `SHA256SUMS` before installation.
+Toolset is consumed through its **latest stable GitHub Release installer**, not from the mutable Toolset source branch. PHP/Node bootstrap downloads `https://github.com/infocyph/Toolset/releases/latest/download/install.sh` and uses that installer to install `gitx` and `chromacat` into `/usr/local/bin`. The Toolset installer verifies each selected tool against the latest release's `SHA256SUMS` before installation.
 
 The permanent CI suite verifies this contract and rejects stale Scriptomatic `master` self-references, mutable Toolset `main` consumption, tag/release workflows for Scriptomatic, and tag-triggered Scriptomatic publishing behavior.
 
@@ -42,10 +42,10 @@ Detailed contracts and dependencies are documented in [`docs/script-contracts.md
 curl -fsSLo /usr/local/bin/cli-setup.sh \
   https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/php-cli-setup.sh
 chmod +x /usr/local/bin/cli-setup.sh
-SCRIPTOMATIC_REF=main TOOLSET_REF=2.0 /usr/local/bin/cli-setup.sh dev 8.4
+SCRIPTOMATIC_REF=main /usr/local/bin/cli-setup.sh dev 8.4
 ```
 
-For a reproducible Scriptomatic build, replace `main` in the download URL with a full commit SHA and pass that same SHA through `SCRIPTOMATIC_REF`.
+For a reproducible Scriptomatic build, replace `main` in the download URL with a full commit SHA and pass that same SHA through `SCRIPTOMATIC_REF`. Toolset remains on its latest stable release channel.
 
 The script is intentionally designed for Alpine-based official-style PHP images. It preserves the existing package/extension inputs:
 
@@ -62,10 +62,10 @@ It also installs the existing developer helpers (`gitx`, `chromacat`, `show-bann
 curl -fsSLo /usr/local/bin/cli-setup.sh \
   https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash/node-cli-setup.sh
 chmod +x /usr/local/bin/cli-setup.sh
-SCRIPTOMATIC_REF=main TOOLSET_REF=2.0 /usr/local/bin/cli-setup.sh dev 24
+SCRIPTOMATIC_REF=main /usr/local/bin/cli-setup.sh dev 24
 ```
 
-For a reproducible Scriptomatic build, replace `main` in the download URL with a full commit SHA and pass that same SHA through `SCRIPTOMATIC_REF`.
+For a reproducible Scriptomatic build, replace `main` in the download URL with a full commit SHA and pass that same SHA through `SCRIPTOMATIC_REF`. Toolset remains on its latest stable release channel.
 
 The script is intentionally designed for Alpine-based official-style Node images. Existing inputs remain supported:
 
