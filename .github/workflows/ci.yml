@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - plan/scriptomatic-hardening
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scriptomatic-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static and ShellCheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+      - name: Validate shell sources
+        run: bash tests/static.sh
+
+  utility:
+    name: Utility smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Run smoke harness
+        run: bash tests/smoke.sh
+
+  php-bootstrap:
+    name: PHP Alpine bootstrap integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Pull PHP fixture with bounded retry
+        run: |
+          set -Eeuo pipefail
+          for attempt in 1 2 3; do
+            docker pull php:8.4-fpm-alpine && exit 0
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep "$attempt"
+          done
+      - name: Run PHP bootstrap fixture
+        run: |
+          docker run --rm --pull=never \
+            -v "$PWD:/repo:ro" -w /repo \
+            php:8.4-fpm-alpine \
+            sh -lc 'apk add --no-cache bash coreutils >/dev/null && bash tests/php-bootstrap.sh'
+
+  node-bootstrap:
+    name: Node Alpine bootstrap fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Pull Node fixture with bounded retry
+        run: |
+          set -Eeuo pipefail
+          for attempt in 1 2 3; do
+            docker pull node:24-alpine && exit 0
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep "$attempt"
+          done
+      - name: Validate Node bootstrap fixture
+        run: |
+          docker run --rm --pull=never \
+            -v "$PWD:/repo:ro" -w /repo \
+            node:24-alpine \
+            sh -lc 'apk add --no-cache bash >/dev/null && bash tests/node-bootstrap.sh'
+
+  entrypoints:
+    name: Runtime entrypoint integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Validate PHP entrypoint
+        run: bash tests/php-entry.sh
+      - name: Validate Node entrypoint baseline
+        run: bash tests/node-entry.sh
+
+  server-helpers:
+    name: Server-helper integration baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Validate current server-helper parsers
+        run: |
+          set -Eeuo pipefail
+          bash -n bash/certbot-hook.sh
+          bash -n bash/certbot-renew.sh
+          bash -n bash/mongo-replica.sh
+          echo 'Server-helper behavioral fixtures expand in Phase 5.'
+
+  security:
+    name: Security audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Run phase-aware audit
+        run: bash tests/security-audit.sh
+
+  gate:
+    name: CI gate
+    if: always()
+    runs-on: ubuntu-24.04
+    needs:
+      - static
+      - utility
+      - php-bootstrap
+      - node-bootstrap
+      - entrypoints
+      - server-helpers
+      - security
+    steps:
+      - name: Summarize validation results
+        env:
+          STATIC: ${{ needs.static.result }}
+          UTILITY: ${{ needs.utility.result }}
+          PHP_BOOTSTRAP: ${{ needs.php-bootstrap.result }}
+          NODE_BOOTSTRAP: ${{ needs.node-bootstrap.result }}
+          ENTRYPOINTS: ${{ needs.entrypoints.result }}
+          SERVER_HELPERS: ${{ needs.server-helpers.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: |
+          set -Eeuo pipefail
+          for result in "$STATIC" "$UTILITY" "$PHP_BOOTSTRAP" "$NODE_BOOTSTRAP" "$ENTRYPOINTS" "$SERVER_HELPERS" "$SECURITY"; do
+            [ "$result" = success ] || exit 1
+          done
