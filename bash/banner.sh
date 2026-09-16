@@ -119,7 +119,7 @@ generate_infocyph_header() {
   work="$(mktemp -d)"
   plain="$work/plain"
   styled="$work/styled"
-  trap 'rm -rf -- "$work"' RETURN EXIT INT TERM HUP
+  trap 'rm -rf -- "${work:-}"' RETURN INT TERM HUP
 
   printf '%s\n' "${figlet_lines[@]}" > "$plain"
   printf '%s\n%s\n%s\n%s\n' "$box_top" "$box_mid" "$box_bot" "$centered_credit" >> "$plain"
