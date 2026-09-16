@@ -187,7 +187,8 @@ install_toolset_helper() {
 }
 
 install_scriptomatic_helper() {
-  local source_name="$1" dest="$2" file="$WORKDIR/scriptomatic-$source_name"
+  local source_name="$1" dest="$2"
+  local file="$WORKDIR/scriptomatic-$source_name"
   download "${SCRIPTOMATIC_BASE_URL%/}/${SCRIPTOMATIC_REF}/bash/${source_name}" "$file"
   case "$source_name" in
     php-entry.sh) sh -n "$file" ;;
