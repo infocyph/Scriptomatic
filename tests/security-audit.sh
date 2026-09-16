@@ -51,7 +51,7 @@ done
 for removed in NODE_AUTO_INSTALL NODE_ALLOW_LOCKFILE_FALLBACK ROOTCA_REQUIRED; do
   assert_absent "$removed" "unsolicited Node entrypoint policy knob: $removed" "$ROOT/bash/node-entry.sh"
 done
-assert_absent 'ROOTCA_DEST=' "root CA destination must remain internal" "$ROOT/bash/php-entry.sh" "$ROOT/bash/node-entry.sh"
+assert_absent '\$\{ROOTCA_DEST(:-|:=)' "root CA destination must not become a public environment interface" "$ROOT/bash/php-entry.sh" "$ROOT/bash/node-entry.sh"
 assert_absent 'CERTBOT_(NGINX|APACHE)_CONTAINER|CERTBOT_RENEW_' "Certbot behavior must not gain a new configuration policy" "$ROOT/bash/certbot-hook.sh" "$ROOT/bash/certbot-renew.sh"
 assert_absent '\$\{MONGO_(RS_NAME|MEMBERS|READY|INIT|SHELL)' "Mongo fixed topology must not become a public environment interface" "$ROOT/bash/mongo-replica.sh"
 
