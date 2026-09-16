@@ -14,14 +14,17 @@ BASHRC="${HOME_DIR}/.bashrc"
 : "${NODE_GLOBAL:=}"
 : "${NODE_GLOBAL_VERSIONED:=}"
 : "${NODE_LOG_DIR:=/var/log/node-app}"
+: "${SCRIPTOMATIC_REF:=main}"
+: "${TOOLSET_REF:=2.0}"
 : "${SCRIPTOMATIC_DOWNLOAD_CONNECT_TIMEOUT:=10}"
 : "${SCRIPTOMATIC_DOWNLOAD_MAX_TIME:=120}"
 : "${SCRIPTOMATIC_DOWNLOAD_RETRIES:=3}"
 
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
-TOOLSET_BASE_URL="https://raw.githubusercontent.com/infocyph/Toolset/main"
-SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic/main/bash"
+SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic/${SCRIPTOMATIC_REF}/bash"
+TOOLSET_RELEASE_BASE_URL="https://github.com/infocyph/Toolset/releases/download/${TOOLSET_REF}"
 SCRIPTOMATIC_TMP_DIR=""
+TOOLSET_SUMS_FILE=""
 
 cleanup() {
   if [[ -n "${SCRIPTOMATIC_TMP_DIR:-}" && -d "$SCRIPTOMATIC_TMP_DIR" ]]; then
@@ -58,6 +61,17 @@ validate_version() {
   }
 }
 
+validate_dependency_refs() {
+  [[ "$SCRIPTOMATIC_REF" == main || "$SCRIPTOMATIC_REF" =~ ^[0-9A-Fa-f]{40}$ ]] || {
+    echo "Invalid SCRIPTOMATIC_REF: use main or a full 40-character commit SHA" >&2
+    return 1
+  }
+  [[ "$TOOLSET_REF" =~ ^[0-9]+[.][0-9]+$ ]] || {
+    echo "Invalid TOOLSET_REF: use an exact stable MAJOR.MINOR release such as 2.0" >&2
+    return 1
+  }
+}
+
 validate_token() {
   local label="$1" token="$2"
   [[ -n "$token" ]] || return 0
@@ -88,6 +102,7 @@ validate_inputs() {
   validate_version "$NODE_VERSION"
   validate_id UID "$UID"
   validate_id GID "$GID"
+  validate_dependency_refs
   [[ "$NODE_LOG_DIR" == /* && "$NODE_LOG_DIR" != *$'\n'* && "$NODE_LOG_DIR" != *'/../'* && "$NODE_LOG_DIR" != */.. ]] || {
     echo "Invalid NODE_LOG_DIR: $NODE_LOG_DIR" >&2
     return 1
@@ -104,8 +119,10 @@ preflight() {
   command -v node >/dev/null 2>&1 || { echo "node executable is required" >&2; return 1; }
   command -v npm >/dev/null 2>&1 || { echo "npm executable is required" >&2; return 1; }
   command -v getent >/dev/null 2>&1 || { echo "getent is required" >&2; return 1; }
+  command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required" >&2; return 1; }
   SCRIPTOMATIC_TMP_DIR="$(mktemp -d /tmp/scriptomatic-node.XXXXXX)"
   chmod 0700 "$SCRIPTOMATIC_TMP_DIR"
+  TOOLSET_SUMS_FILE="${SCRIPTOMATIC_TMP_DIR}/toolset-SHA256SUMS"
 }
 
 download_file() {
@@ -129,6 +146,36 @@ install_remote_script() {
     sh) sh -n "$tmp" ;;
     *) echo "Unknown shell kind: $shell_kind" >&2; return 1 ;;
   esac
+  cat "$tmp" > "$staged"
+  chmod 0755 "$staged"
+  chown root:root "$staged"
+  mv -f -- "$staged" "$destination"
+}
+
+ensure_toolset_checksums() {
+  [[ -s "$TOOLSET_SUMS_FILE" ]] && return 0
+  download_file "$TOOLSET_RELEASE_BASE_URL/SHA256SUMS" "$TOOLSET_SUMS_FILE"
+}
+
+install_toolset_script() {
+  local tool="$1" destination="$2" expected actual tmp staged
+  ensure_toolset_checksums
+  expected="$(awk -v name="$tool" '$2 == name {print $1; exit}' "$TOOLSET_SUMS_FILE")"
+  [[ "$expected" =~ ^[0-9A-Fa-f]{64}$ ]] || {
+    echo "Toolset checksum entry missing or invalid for $tool in release $TOOLSET_REF" >&2
+    return 1
+  }
+
+  tmp="$SCRIPTOMATIC_TMP_DIR/toolset-${tool}"
+  download_file "$TOOLSET_RELEASE_BASE_URL/$tool" "$tmp"
+  actual="$(sha256sum "$tmp" | awk '{print $1}')"
+  [[ "$actual" == "$expected" ]] || {
+    echo "Toolset checksum verification failed for $tool in release $TOOLSET_REF" >&2
+    return 1
+  }
+  bash -n "$tmp"
+
+  staged="$(mktemp "$(dirname "$destination")/.scriptomatic.$(basename "$destination").XXXXXX")"
   cat "$tmp" > "$staged"
   chmod 0755 "$staged"
   chown root:root "$staged"
@@ -159,8 +206,8 @@ install_os() {
 
 install_helper_scripts() {
   echo "👉 Installing helper scripts…"
-  install_remote_script "$TOOLSET_BASE_URL/Git/gitx" /usr/local/bin/gitx bash
-  install_remote_script "$TOOLSET_BASE_URL/ChromaCat/chromacat" /usr/local/bin/chromacat bash
+  install_toolset_script gitx /usr/local/bin/gitx
+  install_toolset_script chromacat /usr/local/bin/chromacat
   install_remote_script "$SCRIPTOMATIC_BASE_URL/banner.sh" /usr/local/bin/show-banner bash
   install_remote_script "$SCRIPTOMATIC_BASE_URL/docknotify.sh" /usr/local/bin/docknotify bash
   install_remote_script "$SCRIPTOMATIC_BASE_URL/node-entry.sh" /usr/local/bin/node-entry sh
