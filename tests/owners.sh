@@ -30,16 +30,16 @@ chmod +x "$work/bin/git-fame"
   PATH="$work/bin:$PATH" bash "$ROOT/bash/owners.sh" > "$work/out"
 )
 
-assert_eq $'path\towners' "$(head -n1 "$work/out")" "owners TSV header"
-assert_eq 5 "$(wc -l < "$work/out" | tr -d ' ')" "owners row count"
-assert_contains "$(cat "$work/out")" $'normal.txt\towner@example.com' "normal path row"
-assert_contains "$(cat "$work/out")" $'space file.txt\towner@example.com' "space path row"
-assert_contains "$(cat "$work/out")" 'line\nbreak.txt' "newline path escaping"
-assert_contains "$(cat "$work/out")" 'tab\tfile.txt' "tab path escaping"
-pass "owners enumerates Git paths NUL-safely and emits escaped TSV"
+assert_eq 4 "$(wc -l < "$work/out" | tr -d ' ')" "owners row count"
+assert_contains "$(cat "$work/out")" 'normal.txt owner@example.com' "normal path row"
+assert_contains "$(cat "$work/out")" 'space file.txt owner@example.com' "space path row"
+assert_contains "$(cat "$work/out")" 'line\nbreak.txt owner@example.com' "newline path escaping"
+assert_contains "$(cat "$work/out")" 'tab\tfile.txt owner@example.com' "tab path escaping"
+assert_not_contains "$(head -n1 "$work/out")" $'path\towners' "no new TSV header"
+pass "owners keeps original filename-owner output while enumerating Git paths NUL-safely"
 
 set +e
-PATH="/usr/bin:/bin" bash "$ROOT/bash/owners.sh" >/dev/null 2>"$work/missing" 
+PATH="/usr/bin:/bin" bash "$ROOT/bash/owners.sh" >/dev/null 2>"$work/missing"
 rc=$?
 set -e
 assert_eq 127 "$rc" "missing git-fame exit"
