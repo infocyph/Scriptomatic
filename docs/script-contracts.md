@@ -4,23 +4,23 @@ This document records the current public contract of each Scriptomatic script. `
 
 ## Shared dependency contract
 
-The PHP and Node bootstrap scripts expose two dependency selectors:
+The PHP and Node bootstrap scripts use two distribution channels:
 
 - `SCRIPTOMATIC_REF` — defaults to `main`; may also be a full 40-character commit SHA. Every sibling Scriptomatic helper is fetched from this same ref.
-- `TOOLSET_REF` — defaults to stable release `2.0`; required Toolset standalone assets are downloaded from the corresponding GitHub Release and verified against that release's `SHA256SUMS`.
+- Toolset — consumed through `https://github.com/infocyph/Toolset/releases/latest/download/install.sh`. The installer installs the requested standalone tools from the latest stable Toolset release and verifies them against that release's `SHA256SUMS`.
 
-Scriptomatic does not consume Toolset from `main` or `master`.
+Scriptomatic does not consume Toolset from `main` or `master`, and there is no separate Toolset version selector in the Scriptomatic bootstrap contract.
 
 ## `php-cli-setup.sh`
 
 - **Shell:** Bash.
 - **Invocation:** `php-cli-setup.sh USERNAME PHP_VERSION`.
-- **Environment:** `UID`, `GID`, `LINUX_PKG`, `LINUX_PKG_VERSIONED`, `PHP_EXT`, `PHP_EXT_VERSIONED`, `MSMTP_FROM`, `SCRIPTOMATIC_REF`, `TOOLSET_REF`, plus optional download timeout knobs prefixed `SCRIPTOMATIC_DOWNLOAD_`.
+- **Environment:** `UID`, `GID`, `LINUX_PKG`, `LINUX_PKG_VERSIONED`, `PHP_EXT`, `PHP_EXT_VERSIONED`, `MSMTP_FROM`, `SCRIPTOMATIC_REF`, plus optional download timeout knobs prefixed `SCRIPTOMATIC_DOWNLOAD_`.
 - **Privileges:** root; creates/configures a non-root developer account with the existing passwordless-sudo behavior.
 - **Environment assumption:** Alpine-based official-style PHP/FPM image with `/usr/local/etc/php` and PHP-FPM configuration paths.
-- **Network:** Alpine repositories, `mlocati/docker-php-extension-installer`, Composer self-update, exact Toolset release assets, same-ref Scriptomatic helpers, and Oh My Bash.
+- **Network:** Alpine repositories, `mlocati/docker-php-extension-installer`, Composer self-update, Toolset latest stable release installer/assets, same-ref Scriptomatic helpers, and Oh My Bash.
 - **Filesystem:** package installation; PHP/FPM configuration; `/etc/msmtprc`; `/etc/profile.d`; developer home; `/usr/local/bin` helpers; sudoers file.
-- **Hardening:** remote helper downloads are bounded, staged, checked for non-empty content and syntax where applicable, then installed atomically. Toolset assets additionally require a matching release checksum before installation.
+- **Hardening:** remote helper downloads are bounded, staged, checked for non-empty content and syntax where applicable, then installed atomically. Toolset installation is delegated to Toolset's own stable installer, which checksum-verifies selected CLI assets.
 - **Exit:** non-zero on required setup failure; removes its executing setup-file path at successful completion, preserving the existing bootstrap behavior.
 
 ## `php-entry.sh`
@@ -35,13 +35,13 @@ Scriptomatic does not consume Toolset from `main` or `master`.
 
 - **Shell:** Bash.
 - **Invocation:** `node-cli-setup.sh USERNAME NODE_VERSION`.
-- **Environment:** `UID`, `GID`, `LINUX_PKG`, `LINUX_PKG_VERSIONED`, `NODE_GLOBAL`, `NODE_GLOBAL_VERSIONED`, `NODE_LOG_DIR`, `SCRIPTOMATIC_REF`, `TOOLSET_REF`, plus optional download timeout knobs prefixed `SCRIPTOMATIC_DOWNLOAD_`.
+- **Environment:** `UID`, `GID`, `LINUX_PKG`, `LINUX_PKG_VERSIONED`, `NODE_GLOBAL`, `NODE_GLOBAL_VERSIONED`, `NODE_LOG_DIR`, `SCRIPTOMATIC_REF`, plus optional download timeout knobs prefixed `SCRIPTOMATIC_DOWNLOAD_`.
 - **Privileges:** root; preserves passwordless sudo for the resulting developer account.
 - **Environment assumption:** Alpine-based official-style Node image.
 - **UID behavior:** if the requested UID is already occupied by the upstream Node account, that account is reused/renamed to the requested user.
-- **Network:** Alpine repositories, npm update, optional npm global packages, exact Toolset release assets, same-ref Scriptomatic helpers, and Oh My Bash.
+- **Network:** Alpine repositories, npm update, optional npm global packages, Toolset latest stable release installer/assets, same-ref Scriptomatic helpers, and Oh My Bash.
 - **Filesystem:** packages; developer user/home; npm cache/global prefix; `/usr/local/bin` helpers; `/etc/profile.d`; sudoers.
-- **Hardening:** package/global-package data is argv-safe, helper downloads are bounded/staged/syntax-checked, and Toolset assets must match their release checksums before installation.
+- **Hardening:** package/global-package data is argv-safe, helper downloads are bounded/staged/syntax-checked, and Toolset installation is delegated to Toolset's checksum-verifying stable installer.
 
 ## `node-entry.sh`
 
