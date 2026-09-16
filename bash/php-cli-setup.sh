@@ -15,7 +15,6 @@ BASHRC="${HOME_DIR}/.bashrc"
 : "${PHP_EXT_VERSIONED:=}"
 : "${MSMTP_FROM:=dev@localhost}"
 : "${SCRIPTOMATIC_REF:=main}"
-: "${TOOLSET_REF:=2.0}"
 : "${SCRIPTOMATIC_DOWNLOAD_CONNECT_TIMEOUT:=10}"
 : "${SCRIPTOMATIC_DOWNLOAD_MAX_TIME:=120}"
 : "${SCRIPTOMATIC_DOWNLOAD_RETRIES:=3}"
@@ -23,13 +22,12 @@ BASHRC="${HOME_DIR}/.bashrc"
 OHMB_URL="https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh"
 IPE_URL="https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions"
 SCRIPTOMATIC_BASE_URL="https://raw.githubusercontent.com/infocyph/Scriptomatic/${SCRIPTOMATIC_REF}/bash"
-TOOLSET_RELEASE_BASE_URL="https://github.com/infocyph/Toolset/releases/download/${TOOLSET_REF}"
+TOOLSET_INSTALLER_URL="https://github.com/infocyph/Toolset/releases/latest/download/install.sh"
 PHP_PROFILE="php$(v=${PHP_VERSION//[^0-9.]/}; printf '%s%s' "${v%%.*}" "${v#*.}" | cut -d. -f1)"
 SOCK_DIR="${HOME_DIR}/.run/php-fpm"
 DOMAINS_DIR="/usr/local/etc/php-fpm.domains/${PHP_PROFILE}"
 COMPOSER_HOME_VERSIONED="${HOME_DIR}/.composer/${PHP_PROFILE}"
 SCRIPTOMATIC_TMP_DIR=""
-TOOLSET_SUMS_FILE=""
 
 cleanup() {
   if [[ -n "${SCRIPTOMATIC_TMP_DIR:-}" && -d "$SCRIPTOMATIC_TMP_DIR" ]]; then
@@ -66,13 +64,9 @@ validate_version() {
   }
 }
 
-validate_dependency_refs() {
+validate_scriptomatic_ref() {
   [[ "$SCRIPTOMATIC_REF" == main || "$SCRIPTOMATIC_REF" =~ ^[0-9A-Fa-f]{40}$ ]] || {
     echo "Invalid SCRIPTOMATIC_REF: use main or a full 40-character commit SHA" >&2
-    return 1
-  }
-  [[ "$TOOLSET_REF" =~ ^[0-9]+[.][0-9]+$ ]] || {
-    echo "Invalid TOOLSET_REF: use an exact stable MAJOR.MINOR release such as 2.0" >&2
     return 1
   }
 }
@@ -107,7 +101,7 @@ validate_inputs() {
   validate_version "$PHP_VERSION"
   validate_id UID "$UID"
   validate_id GID "$GID"
-  validate_dependency_refs
+  validate_scriptomatic_ref
   [[ "$MSMTP_FROM" != *$'\n'* && "$MSMTP_FROM" != *$'\r'* ]] || {
     echo "Invalid MSMTP_FROM" >&2
     return 1
@@ -124,10 +118,10 @@ preflight() {
   [[ -d /usr/local/etc/php ]] || { echo "Missing /usr/local/etc/php; expected an official-style PHP image" >&2; return 1; }
   command -v getent >/dev/null 2>&1 || { echo "getent is required" >&2; return 1; }
   command -v mktemp >/dev/null 2>&1 || { echo "mktemp is required" >&2; return 1; }
-  command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required" >&2; return 1; }
+  command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required by the Toolset installer" >&2; return 1; }
+  command -v install >/dev/null 2>&1 || { echo "install is required by the Toolset installer" >&2; return 1; }
   SCRIPTOMATIC_TMP_DIR="$(mktemp -d /tmp/scriptomatic-php.XXXXXX)"
   chmod 0700 "$SCRIPTOMATIC_TMP_DIR"
-  TOOLSET_SUMS_FILE="${SCRIPTOMATIC_TMP_DIR}/toolset-SHA256SUMS"
 }
 
 download_file() {
@@ -157,34 +151,11 @@ install_remote_script() {
   mv -f -- "$staged" "$destination"
 }
 
-ensure_toolset_checksums() {
-  [[ -s "$TOOLSET_SUMS_FILE" ]] && return 0
-  download_file "$TOOLSET_RELEASE_BASE_URL/SHA256SUMS" "$TOOLSET_SUMS_FILE"
-}
-
-install_toolset_script() {
-  local tool="$1" destination="$2" expected actual tmp staged
-  ensure_toolset_checksums
-  expected="$(awk -v name="$tool" '$2 == name {print $1; exit}' "$TOOLSET_SUMS_FILE")"
-  [[ "$expected" =~ ^[0-9A-Fa-f]{64}$ ]] || {
-    echo "Toolset checksum entry missing or invalid for $tool in release $TOOLSET_REF" >&2
-    return 1
-  }
-
-  tmp="$SCRIPTOMATIC_TMP_DIR/toolset-${tool}"
-  download_file "$TOOLSET_RELEASE_BASE_URL/$tool" "$tmp"
-  actual="$(sha256sum "$tmp" | awk '{print $1}')"
-  [[ "$actual" == "$expected" ]] || {
-    echo "Toolset checksum verification failed for $tool in release $TOOLSET_REF" >&2
-    return 1
-  }
-  bash -n "$tmp"
-
-  staged="$(mktemp "$(dirname "$destination")/.scriptomatic.$(basename "$destination").XXXXXX")"
-  cat "$tmp" > "$staged"
-  chmod 0755 "$staged"
-  chown root:root "$staged"
-  mv -f -- "$staged" "$destination"
+install_toolset_scripts() {
+  local installer="$SCRIPTOMATIC_TMP_DIR/toolset-install.sh"
+  download_file "$TOOLSET_INSTALLER_URL" "$installer"
+  bash -n "$installer"
+  bash "$installer" --prefix /usr/local/bin gitx chromacat
 }
 
 atomic_write() {
@@ -273,8 +244,7 @@ EOF_PROFILE
 
 install_helper_scripts() {
   echo "👉 Installing helper scripts…"
-  install_toolset_script gitx /usr/local/bin/gitx
-  install_toolset_script chromacat /usr/local/bin/chromacat
+  install_toolset_scripts
   install_remote_script "$SCRIPTOMATIC_BASE_URL/banner.sh" /usr/local/bin/show-banner bash
   install_remote_script "$SCRIPTOMATIC_BASE_URL/docknotify.sh" /usr/local/bin/docknotify bash
   install_remote_script "$SCRIPTOMATIC_BASE_URL/php-entry.sh" /usr/local/bin/php-entry sh
