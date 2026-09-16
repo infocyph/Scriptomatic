@@ -6,6 +6,7 @@ on:
       - plan/scriptomatic-hardening
     paths:
       - .github/scripts/scope-preservation-final.py
+      - .github/scripts/fix-scope-helper.py
       - .github/workflows/scope-preservation-final-once.yml
 
 permissions:
@@ -21,6 +22,9 @@ jobs:
         with:
           ref: plan/scriptomatic-hardening
           fetch-depth: 0
+
+      - name: Fix helper replacement mode
+        run: python3 .github/scripts/fix-scope-helper.py
 
       - name: Apply scope-preservation cleanup
         run: python3 .github/scripts/scope-preservation-final.py
