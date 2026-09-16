@@ -8,6 +8,8 @@ source "$ROOT/tests/lib/assert.sh"
 command -v node >/dev/null 2>&1 || fail "node fixture missing node"
 command -v npm >/dev/null 2>&1 || fail "node fixture missing npm"
 [[ -f /etc/alpine-release ]] || fail "node bootstrap integration expects Alpine fixture"
+grep -qF '${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}' "$ROOT/bash/node-cli-setup.sh" || fail "Node sudo compatibility default"
+grep -qF '${SCRIPTOMATIC_OH_MY_BASH:=1}' "$ROOT/bash/node-cli-setup.sh" || fail "Node Oh My Bash compatibility default"
 
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT

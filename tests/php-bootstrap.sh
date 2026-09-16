@@ -7,6 +7,9 @@ source "$ROOT/tests/lib/assert.sh"
 [[ "$(id -u)" == 0 ]] || fail "php-bootstrap fixture must run as root inside a disposable PHP image"
 command -v php >/dev/null 2>&1 || fail "php missing"
 command -v apk >/dev/null 2>&1 || fail "apk missing"
+grep -qF '${COMPOSER_VERSION:=2.10.3}' "$ROOT/bash/php-cli-setup.sh" || fail "Composer compatibility default"
+grep -qF '${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}' "$ROOT/bash/php-cli-setup.sh" || fail "PHP sudo compatibility default"
+grep -qF '${SCRIPTOMATIC_OH_MY_BASH:=1}' "$ROOT/bash/php-cli-setup.sh" || fail "PHP Oh My Bash compatibility default"
 
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT

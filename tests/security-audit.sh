@@ -44,7 +44,14 @@ fi
 
 # Runtime/bootstrap-specific invariants.
 assert_absent 'npm@latest|npm@next' "Node setup must not float npm implicitly" "$ROOT/bash/node-cli-setup.sh"
-assert_absent 'NODE_LOG_ENABLED:=1|NODE_KEEPALIVE_ON_FAIL:=1|NODE_AUTO_INSTALL:=1' "Node runtime mutation/convenience must not be default-on" "$ROOT/bash/node-entry.sh"
+grep -qF ': "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"' "$ROOT/bash/php-cli-setup.sh" || fail "PHP developer sudo default drifted"
+grep -qF ': "${SCRIPTOMATIC_OH_MY_BASH:=1}"' "$ROOT/bash/php-cli-setup.sh" || fail "PHP Oh My Bash default drifted"
+grep -qF ': "${COMPOSER_VERSION:=2.10.3}"' "$ROOT/bash/php-cli-setup.sh" || fail "PHP Composer default drifted"
+grep -qF ': "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"' "$ROOT/bash/node-cli-setup.sh" || fail "Node developer sudo default drifted"
+grep -qF ': "${SCRIPTOMATIC_OH_MY_BASH:=1}"' "$ROOT/bash/node-cli-setup.sh" || fail "Node Oh My Bash default drifted"
+for preserved in 'NODE_LOG_ENABLED:=1' 'NODE_KEEPALIVE_ON_FAIL:=1' 'NODE_AUTO_INSTALL:=1' 'NODE_ALLOW_LOCKFILE_FALLBACK:=1'; do
+  grep -qF "$preserved" "$ROOT/bash/node-entry.sh" || fail "Node compatibility default drifted: $preserved"
+done
 assert_absent 'for[[:space:]].*\$\(git[[:space:]]+ls-files' "owners must keep Git path enumeration NUL-safe" "$ROOT/bash/owners.sh"
 assert_absent 'payload=.*\$\(printf' "docknotify must stream its final newline-bearing protocol record" "$ROOT/bash/docknotify.sh"
 assert_absent 'docker[[:space:]]+exec[[:space:]]+-[^[:space:]]*t' "non-interactive automation must not request a Docker TTY" "$ROOT/bash/certbot-hook.sh"

@@ -14,7 +14,7 @@ LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
 : "${PHP_EXT:=}"
 : "${PHP_EXT_VERSIONED:=}"
 : "${MSMTP_FROM:=dev@localhost}"
-: "${COMPOSER_VERSION:=}"
+: "${COMPOSER_VERSION:=2.10.3}"
 : "${SCRIPTOMATIC_REF:=main}"
 : "${SCRIPTOMATIC_BASE_URL:=https://raw.githubusercontent.com/infocyph/Scriptomatic}"
 : "${TOOLSET_REF:=2.0}"
@@ -22,8 +22,8 @@ LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
 : "${PHP_EXT_INSTALLER_VERSION:=2.11.12}"
 : "${PHP_EXT_INSTALLER_SHA256:=7c133ae4b9490d912287188c62ea570729cfa74f0ea357e4be672ce696b4aa29}"
 : "${PHP_EXT_INSTALLER_BASE_URL:=https://github.com/mlocati/docker-php-extension-installer/releases/download}"
-: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=0}"
-: "${SCRIPTOMATIC_OH_MY_BASH:=0}"
+: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"
+: "${SCRIPTOMATIC_OH_MY_BASH:=1}"
 : "${OHMYBASH_REF:=abf846186ab0a8a41ec5888e827ece6277dfe446}"
 : "${OHMYBASH_REPO_URL:=https://github.com/ohmybash/oh-my-bash.git}"
 : "${DOWNLOAD_CONNECT_TIMEOUT:=5}"
@@ -355,6 +355,12 @@ configure_oh_my_bash() {
     -e 's/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/' \
     -e 's/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/' \
     "$BASHRC" || true
+
+  if grep -qE '^[[:space:]]*plugins=\(' "$BASHRC"; then
+    sed -i 's/^[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/' "$BASHRC"
+  else
+    printf '\nplugins=(git bashmarks colored-man-pages npm xterm)\n' >> "$BASHRC"
+  fi
 }
 
 add_banner_snippet() {
@@ -404,7 +410,7 @@ main() {
   validate_runtime_config
 
   rm -rf -- /var/cache/apk/*
-  printf 'php-cli-setup complete for %s\n' "$USERNAME"
+  printf '✅ cli-setup complete for %s\n' "$USERNAME"
 }
 
 main "$@"

@@ -20,8 +20,8 @@ LEGACY_UID_ENV="$(printenv UID 2>/dev/null || true)"
 : "${SCRIPTOMATIC_BASE_URL:=https://raw.githubusercontent.com/infocyph/Scriptomatic}"
 : "${TOOLSET_REF:=2.0}"
 : "${TOOLSET_RELEASE_BASE_URL:=https://github.com/infocyph/Toolset/releases/download}"
-: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=0}"
-: "${SCRIPTOMATIC_OH_MY_BASH:=0}"
+: "${SCRIPTOMATIC_PASSWORDLESS_SUDO:=1}"
+: "${SCRIPTOMATIC_OH_MY_BASH:=1}"
 : "${OHMYBASH_REF:=abf846186ab0a8a41ec5888e827ece6277dfe446}"
 : "${OHMYBASH_REPO_URL:=https://github.com/ohmybash/oh-my-bash.git}"
 : "${DOWNLOAD_CONNECT_TIMEOUT:=5}"
@@ -318,14 +318,32 @@ configure_node() {
 
 configure_oh_my_bash() {
   [[ "$SCRIPTOMATIC_OH_MY_BASH" == 1 ]] || return 0
-  [[ -d "$HOME_DIR/.oh-my-bash" ]] && return 0
   command -v git >/dev/null 2>&1 || fatal "git is required for Oh My Bash"
-  local clone_dir="$WORKDIR/oh-my-bash"
-  git clone --quiet --no-checkout "$OHMYBASH_REPO_URL" "$clone_dir"
-  git -C "$clone_dir" checkout --quiet --detach "$OHMYBASH_REF"
-  rm -rf -- "$clone_dir/.git"
-  mv -- "$clone_dir" "$HOME_DIR/.oh-my-bash"
-  chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$HOME_DIR/.oh-my-bash"
+
+  if [[ ! -d "$HOME_DIR/.oh-my-bash" ]]; then
+    local clone_dir="$WORKDIR/oh-my-bash"
+    git clone --quiet --no-checkout "$OHMYBASH_REPO_URL" "$clone_dir"
+    git -C "$clone_dir" checkout --quiet --detach "$OHMYBASH_REF"
+    rm -rf -- "$clone_dir/.git"
+    mv -- "$clone_dir" "$HOME_DIR/.oh-my-bash"
+    chown -R "$SCRIPTOMATIC_UID:$SCRIPTOMATIC_GID" "$HOME_DIR/.oh-my-bash"
+  fi
+
+  [[ -f "$BASHRC" ]] || run_as_user touch "$BASHRC"
+  if [[ -f "$HOME_DIR/.oh-my-bash/templates/bashrc.osh-template" && ! -s "$BASHRC" ]]; then
+    run_as_user cp "$HOME_DIR/.oh-my-bash/templates/bashrc.osh-template" "$BASHRC"
+  fi
+
+  sed -i \
+    -e 's/^[[:space:]]*#\?[[:space:]]*OSH_THEME=.*/OSH_THEME="lambda"/' \
+    -e 's/^[[:space:]]*#\?[[:space:]]*DISABLE_AUTO_UPDATE=.*/DISABLE_AUTO_UPDATE="true"/' \
+    "$BASHRC" || true
+
+  if grep -qE '^[[:space:]]*plugins=\(' "$BASHRC"; then
+    sed -i 's/^[[:space:]]*plugins=(.*)/plugins=(git bashmarks colored-man-pages npm xterm)/' "$BASHRC"
+  else
+    printf '\nplugins=(git bashmarks colored-man-pages npm xterm)\n' >> "$BASHRC"
+  fi
 }
 
 add_banner_snippet() {
@@ -357,13 +375,13 @@ main() {
   install_helper_scripts
   set_banner_hook
   create_user
-  configure_node
   configure_oh_my_bash
+  configure_node
   add_banner_snippet
   run_alias_maker
 
   rm -rf -- /var/cache/apk/*
-  printf 'node-cli-setup complete for %s\n' "$USERNAME"
+  printf '✅ node cli-setup complete for %s\n' "$USERNAME"
 }
 
 main "$@"
