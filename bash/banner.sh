@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 generate_infocyph_header() {
   local describe=" ${1:-DESCRIBE} "
-  local figlet_output
+  local figlet_output=''
 
   if command -v figlet >/dev/null 2>&1; then
     figlet_output="$(figlet -f slant INFOCYPH 2>/dev/null || true)"
