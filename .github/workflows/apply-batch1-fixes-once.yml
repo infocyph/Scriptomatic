@@ -39,3 +39,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m 'fix: close Batch 1 validation regressions'
           git push origin HEAD:plan/scriptomatic-hardening
+
+# retrigger after tightening the audit token matcher
