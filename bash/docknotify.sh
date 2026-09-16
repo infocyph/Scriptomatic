@@ -40,7 +40,7 @@ title="$1"
 body="$2"
 
 [[ -n "$HOST" ]] || { echo "docknotify: host is empty" >&2; exit 2; }
-[[ "$HOST" != -* && "$HOST" =~ ^[A-Za-z0-9_.:%\[\]-]+$ ]] || {
+[[ "$HOST" != -* && "$HOST" != *$' '* && "$HOST" != *$'\t'* && "$HOST" != *$'\n'* && "$HOST" != *$'\r'* ]] || {
   echo "docknotify: invalid host" >&2
   exit 2
 }
