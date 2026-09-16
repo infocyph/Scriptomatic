@@ -1,0 +1,45 @@
+name: Scope preservation cleanup (one-shot)
+
+on:
+  push:
+    branches:
+      - plan/scriptomatic-hardening
+    paths:
+      - .github/scripts/scope-preservation-final.py
+      - .github/workflows/scope-preservation-final-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: plan/scriptomatic-hardening
+          fetch-depth: 0
+
+      - name: Apply scope-preservation cleanup
+        run: python3 .github/scripts/scope-preservation-final.py
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: Validate shell syntax and static checks
+        run: bash tests/static.sh
+
+      - name: Commit cleanup
+        run: |
+          set -Eeuo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add bash tests
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: preserve Scriptomatic main behavior while hardening'
+          git push origin HEAD:plan/scriptomatic-hardening
