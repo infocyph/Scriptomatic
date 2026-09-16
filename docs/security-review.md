@@ -4,31 +4,32 @@ Scriptomatic contains privileged build/bootstrap scripts and runtime helpers. Ha
 
 ## Distribution trust
 
-Scriptomatic intentionally supports direct installation from `main`. That is a project policy, not an integrity guarantee: consumers that require reproducible builds may pin a full commit SHA.
+Scriptomatic intentionally supports direct installation from `main`. That is a project policy, not an integrity guarantee: consumers that require reproducible Scriptomatic builds may pin a full commit SHA.
 
-PHP and Node bootstrap propagate `SCRIPTOMATIC_REF` to every sibling Scriptomatic helper. The default remains `main`; reproducible consumers may use the same full 40-character commit SHA for the initial bootstrap URL and `SCRIPTOMATIC_REF`.
+PHP and Node bootstrap propagate `SCRIPTOMATIC_REF` to every sibling Scriptomatic helper. The default remains `main`; reproducible Scriptomatic consumers may use the same full 40-character commit SHA for the initial bootstrap URL and `SCRIPTOMATIC_REF`.
 
-Toolset is consumed from an exact stable release rather than a mutable branch. `TOOLSET_REF` defaults to `2.0`; required standalone assets are downloaded from that release and verified against its published `SHA256SUMS` before installation.
+Toolset is consumed through its latest stable GitHub Release installer rather than from a mutable source branch. The bootstrap downloads `https://github.com/infocyph/Toolset/releases/latest/download/install.sh`; that installer fetches selected Toolset CLIs from the latest stable release and verifies them against the release `SHA256SUMS` before installation.
 
-Permanent CI enforces the Scriptomatic distribution contract: canonical self-references use `main` or an approved full SHA, Toolset is not consumed from a mutable branch, and the repository must not acquire a release/publish workflow or tag-triggered release behavior.
+Permanent CI enforces the Scriptomatic distribution contract: canonical self-references use `main` or an approved full SHA, Toolset is not consumed from a mutable source branch, and the repository must not acquire a release/publish workflow or tag-triggered release behavior.
 
 ## Accepted mutable upstream policies
 
-The following mutable sources/version-selection behaviors are retained intentionally for compatibility and must not be mistaken for immutable supply-chain guarantees:
+The following mutable sources/version-selection behaviors are retained intentionally for compatibility:
 
 - Scriptomatic `main` when the consumer does not opt into commit-SHA pinning;
+- Toolset's `releases/latest` stable release channel;
 - Oh My Bash's current upstream installer source;
 - `mlocati/docker-php-extension-installer` `releases/latest`;
 - Composer self-update;
 - npm update/fallback behavior.
 
-Toolset is intentionally excluded from this list because Scriptomatic consumes a stable checksummed release.
+Toolset `main` is not part of this policy; Scriptomatic consumes only the stable release channel.
 
 ## Remote execution
 
 Remote shell content is not piped directly into a shell. Bootstrap downloads are fetched to private temporary files with bounded curl settings and finite retries, checked for non-empty content and shell syntax where applicable, then executed or installed through staged files.
 
-Toolset helper downloads add an integrity check: the expected digest is read from the same exact Toolset release's `SHA256SUMS`, and the downloaded asset must match before it can be installed.
+Toolset installation is delegated to Toolset's own stable installer. That installer validates the requested CLI assets against the same stable release's `SHA256SUMS`, syntax-checks them, validates their version contract, and installs them atomically.
 
 ## Privilege boundary
 
@@ -42,7 +43,7 @@ Certbot automation uses non-interactive Docker execution and checks exact runnin
 
 Comma-separated package, extension and global-package lists are parsed as argument arrays. Tokens containing shell-control syntax or beginning with package-manager option syntax are rejected before privileged package commands run.
 
-`SCRIPTOMATIC_REF` accepts only `main` or a full 40-character commit SHA. `TOOLSET_REF` accepts only an exact stable `MAJOR.MINOR` release tag. These restrictions prevent dependency URL construction from becoming an arbitrary remote-source selector.
+`SCRIPTOMATIC_REF` accepts only `main` or a full 40-character commit SHA. Toolset does not expose an arbitrary URL or branch selector through Scriptomatic; its source is fixed to the latest stable GitHub Release installer.
 
 `NODE_CMD` in `node-entry.sh` is an intentional trusted shell-expression escape hatch and is not treated as untrusted data. Only trusted container/application configuration should populate it.
 
@@ -70,7 +71,7 @@ Notification tokens and external credentials must not be emitted in diagnostics.
 
 ## Downstream compatibility
 
-Scriptomatic's canonical branch is `main`. Downstream consumers still using the historical `master` raw URL should migrate that branch component to `main`. Consumers that need reproducible builds should use one full Scriptomatic commit SHA consistently for both the initial download and `SCRIPTOMATIC_REF`, while keeping Toolset on an exact stable release such as `2.0`.
+Scriptomatic's canonical branch is `main`. Downstream consumers still using the historical `master` raw URL should migrate that branch component to `main`. Consumers that need reproducible Scriptomatic builds should use one full Scriptomatic commit SHA consistently for both the initial download and `SCRIPTOMATIC_REF`; Toolset remains on its latest stable release channel.
 
 See [`downstream-compatibility.md`](downstream-compatibility.md).
 
